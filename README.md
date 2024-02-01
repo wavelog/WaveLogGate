@@ -19,6 +19,9 @@
 Go To WSJT-X-Settings // Reporting
 Enable "Secondary UDP Server" like shown in the picture. Do NOT set "UDP Server" (above) to the same Port!
 
+![image](https://github.com/wavelog/waveloggate/assets/1410708/7238b193-c589-4ae3-97f8-eae506965dff)
+
+
 #### Features
 * When clicking on a spot in WaveLog-Bandmap your TRX with QSY to the Spot.
 * If you log a (non WSJT-X) QSO first go to "Stations Tab" and chose "WSJTX 2 WL" as Radio. After that Band/Mode/QRG will be automatically taken from your Rig into the QSO-Fields
