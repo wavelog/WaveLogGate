@@ -5,7 +5,7 @@
 * WaveLog-Account on any WaveLog instance
 
 #### Setup:
-1. Download Binary (at Releases)
+1. Download Binary
 2. Start Binary (for Windows: Start Binary and after that you have a NEW Binary. One can delete the old one)
 3. Fill in informations:
   * WAVELog-URL including index.php (if you setted it up with that)
