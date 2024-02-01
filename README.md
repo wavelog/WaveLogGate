@@ -2,7 +2,7 @@
 
 #### Prerequisites
 * [FLRig](http://www.w1hkj.com/) properly SetUp to your TRX (if you want to use the CAT-Feature. It's optional!)
-* WSJT-X (if you want to use the automatic logging from WSJT-X/Z/Y)
+* WSJT-X (if you want to use the automatic logging from WSJT-X/Z/Y / FLDigi / Tool which produces UDP-Log-Packets)
 * WaveLog-Account on any WaveLog instance
 
 #### Setup:
@@ -25,7 +25,7 @@ Enable "Secondary UDP Server" like shown in the picture. Do NOT set "UDP Server"
 
 #### Features
 * When clicking on a spot in WaveLog-Bandmap your TRX with QSY to the Spot.
-* If you log a (non WSJT-X) QSO first go to "Stations Tab" and chose "WSJTX 2 WL" as Radio. After that Band/Mode/QRG will be automatically taken from your Rig into the QSO-Fields
+* If you log a (non WSJT-X) QSO first go to "Stations Tab" and chose "WLGate" as Radio. After that Band/Mode/QRG will be automatically taken from your Rig into the QSO-Fields
 * When clicking the loupe at Live-QSO/Post-QSO Wavelog will automaticly lookup the Spot behind the QRG (if there's a spot)
 
 Enjoy
