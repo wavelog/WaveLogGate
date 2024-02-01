@@ -1,7 +1,8 @@
 # CAT and WSJT-X Bridge for Wavelog
 
 #### Prerequisites
-* [FLRig](http://www.w1hkj.com/) properly SetUp to your TRX
+* [FLRig](http://www.w1hkj.com/) properly SetUp to your TRX (if you want to use the CAT-Feature. It's optional!)
+* WSJT-X (if you want to use the automatic logging from WSJT-X/Z/Y)
 * WaveLog-Account on any WaveLog instance
 
 #### Setup:
