@@ -1,0 +1,6 @@
+node_modules/
+*.swp
+out/
+package-lock.json
+.DS_Store
+yarn.lock

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Content-Security-Policy"
+		content="default-src *; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<!-- Bootstrap CSS -->
+	<link rel="stylesheet" href="./node_modules/bootstrap/dist/css/bootstrap.min.css" />
+	<script>let $ = require("jquery");</script>
+	<script>require("popper.js");</script>
+	<script>require("bootstrap");</script>
+</head>
+
+<style>
+	body {
+		background-color: #303030;
+		color: #c6c6c6;
+	}
+
+	input[type="checkbox"] {
+		accent-color: #b3b3b3;
+	}
+
+	.card {
+		background-color: #303030;
+		color: #c6c6c6;
+		border: 1px solid #727272;
+	}
+
+	.card {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.card-header,
+	.card-footer {
+		background-color: #1c1c1c;
+	}
+
+	.btn-primary {
+		background-color: #375a7f;
+		border-color: #375a7f;
+	}
+
+	.bottom-right {
+		position: fixed;
+		bottom: 0;
+		right: 0;
+		padding: 4px;
+	}
+
+	.nav-link {
+		height: 30px;
+		padding: 0px;
+		color: #c6c6c6;
+		border: 1px solid #303030;
+	}
+
+	.nav-tabs .nav-item.show .nav-link,
+	.nav-tabs .nav-link.active {
+		color: #c6c6c6;
+		background-color: #303030;
+		border: 1px solid #303030;
+	}
+
+	.nav-tabs .nav-link {
+		background-color: #262626;
+	}
+
+	.log,
+	.log-qrg,
+	.log-text {
+		margin: 4px;
+		padding-left: 4px;
+		padding-right: 4px;
+	}
+
+	.form-control,
+	.log {
+		background-color: #1c1c1c;
+		color: #b3b3b3;
+		border: 1px solid #727272;
+	}
+
+	#buttonsRow {
+		position: fixed;
+		bottom: 8px;
+		width: 100%;
+		padding: 10px; /* Optional: Füge Padding hinzu, um die Knöpfe zu trennen */
+	}
+</style>
+
+<body>
+	<!-- You can also require other files to run in this process -->
+	<div class="card">
+		<div class="card-header">
+			<ul class="nav nav-tabs card-header-tabs nav-fill">
+				<li class="nav-item">
+					<a class="nav-link active" id="status-tab" data-toggle="tab" data-target="#status" type="button" href="#status" role="tab"
+						aria-controls="status" aria-selected="true">Status</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link" id="config-tab" data-toggle="tab" data-target="#config" type="button" href="#config" role="tab"
+						aria-controls="config" aria-selected="true">Config</a>
+				</li>
+			</ul>
+		</div>
+		<div class="card-body">
+			<div class="tab-content" id="myTabContent">
+				<div class="tab-pane fade show active" id="status" role="tabpanel" aria-labelledby="status-tab">
+					<div class="alert alert-danger mt-2" style="text-align: center; display: none" role="alert"
+						id="msg2"></div>
+					<div class="log">
+						<div class="log-qrg" id="current_trx"></div>
+						<div class="log-text">
+							<div class="label log" style="text-align: center" id="msg"></div>
+							<div id="log"></div>
+						</div>
+					</div>
+				</div>
+				<div class="tab-pane" id="config" role="tabpanel" aria-labelledby="config-tab">
+					<div class="row">
+						<div class="col">
+							<div class="mb-3">
+								<label for="wavelog_url">Wavelog-URL</label>
+								<input type="url" class="form-control form-control-sm" name="wavelog_url"
+									id="wavelog_url" placeholder="https://log.jo30.de/index.php" value="" />
+							</div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col">
+							<div class="mb-3">
+								<label for="wavelog_key">Wavelog-API-Key</label>
+								<input type="text" class="form-control form-control-sm" name="wavelog_key"
+									id="wavelog_key" value="" />
+							</div>
+						</div>
+						<div class="col">
+							<div class="mb-3">
+								<label for="wavelog_key">Wavelog-Station-ID</label>
+								<input type="number" class="form-control form-control-sm" name="wavelog_id"
+									id="wavelog_id" value="" />
+							</div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col">
+							<div class="mb-3">
+								<label for="wavelog_radioname">Radio Name</label>
+								<input type="text" class="form-control form-control-sm" name="wavelog_radioname"
+									id="wavelog_radioname" value="" />
+							</div>
+						</div>
+						<div class="col"></div>
+					</div>
+					<div class="row">
+						<div class="col">
+							<div class="mb-3 col-mb-3">
+								<label for="flrig_host">FLRig Host</label>
+								<input type="text" class="form-control form-control-sm" name="flrig_host"
+									id="flrig_host" value="" />
+							</div>
+						</div>
+						<div class="col">
+							<div class="mb-2 col-mb-2">
+								<label for="flrig_port">FLRig Port</label>
+								<input type="number" class="form-control form-control-sm" name="flrig_port"
+									id="flrig_port" value="" />
+							</div>
+						</div>
+						<div class="col">
+							<div class="mb-1 col-mb-1">
+								<label for="flrig_ena">FLRig Enabled</label>
+								<input type="checkbox" value="1" class="form-control form-control-sm" name="flrig_ena"
+									id="flrig_ena" value="" />
+							</div>
+						</div>
+					</div>
+					<div class="row" id="buttonsRow">
+						<div class="col">
+							<div class="mb-3 col-mb-3" style="text-align: left">
+								<button type="button" class="btn btn-primary" id="save"></i>Save</button>
+							</div>
+						</div>
+						<div class="col">
+							<div class="mb-3 col-mb-3" style="text-align: center">
+								<button type="button" class="btn btn-primary" id="test"></i>Test</button>
+							</div>
+						</div>
+						<div class="col">
+							<div class="mb-3 col-mb-3" style="text-align: right">
+								<button type="button" class="btn btn-primary" id="quit"></i>Quit</button>
+							</div>
+						</div>
+					</div>
+
+				</div>
+			</div>
+		</div>
+		<div class="card-footer">
+			<small class="mt-0.5 bottom-right" id="utc"></small>
+		</div>
+	</div>
+
+	<!-- Loading the renderer-->
+	<script src="./renderer.js"></script>
+</body>
+
+</html>
