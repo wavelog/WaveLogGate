@@ -29,3 +29,6 @@ Enable "Secondary UDP Server" like shown in the picture. Do NOT set "UDP Server"
 * When clicking the loupe at Live-QSO/Post-QSO Wavelog will automaticly lookup the Spot behind the QRG (if there's a spot)
 
 Enjoy
+
+#### Contributing
+Contribution is welcome. PRs will only be accepted against the Dev-Branch.
