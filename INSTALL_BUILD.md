@@ -16,3 +16,6 @@
 
 #### Usage:
 * `npm run start` for starting the App in dev-mode
+
+#### Build/Compile:
+* `npm run make` - after successful build the binary will appear in the subfolder "out"
