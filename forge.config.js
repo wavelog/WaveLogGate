@@ -1,26 +1,43 @@
 module.exports = {
-  packagerConfig: {
-    asar: true,
-  },
-  rebuildConfig: {},
-  makers: [
-    {
-      name: '@electron-forge/maker-squirrel',
-      config: { loadingGif: "loading.gif", name: "SW2CL_DJ7NT" },
-    },
-    {
-      name: '@electron-forge/maker-zip',
-      platforms: ['darwin'],
-    },
-    {
-      name: '@electron-forge/maker-deb',
-      config: {},
-    },
-  ],
-  plugins: [
-    {
-      name: '@electron-forge/plugin-auto-unpack-natives',
-      config: {},
-    },
-  ],
+	packagerConfig: {
+		// set config executableName
+		executableName: "wlgate",
+		icon: './favicon.ico',
+		asar: true,
+	},
+	publishers: [
+		{
+			name: '@electron-forge/publisher-github',
+			config: {
+				repository: {
+					owner: 'wavelog',
+					name: 'WaveLogGate'
+				},
+				prerelease: false
+			}
+		}
+	],
+	rebuildConfig: {},
+	makers: [
+		{
+			name: '@electron-forge/maker-squirrel',
+			config: { icon: "./favicon.ico", maintainer: 'DJ7NT', loadingGif: "loading.gif", name: "WLGate_by_DJ7NT" },
+		},
+		{
+			name: '@electron-forge/maker-dmg',
+			config: { format: 'ULFO' },
+			platforms: ['darwin'],
+		},
+		{
+			name: '@electron-forge/maker-deb',
+			config: { "bin":"wlgate" },
+			arch: ['x86']
+		},
+	],
+	plugins: [
+		{
+			name: '@electron-forge/plugin-auto-unpack-natives',
+			config: {},
+		},
+	],
 };
