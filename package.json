@@ -4,7 +4,7 @@
   "description": "Gateway for connecting WSJT-* and FLRig to Wavelog",
   "keywords": [],
   "main": "./main.js",
-  "version": "1.0.13",
+  "version": "1.0.15",
   "author": "DJ7NT",
   "scripts": {
     "start": "electron-forge start",
@@ -20,7 +20,8 @@
     "electron-squirrel-startup": "^1.0.0",
     "jquery": "^3.6.0",
     "popper.js": "^1.14.4",
-    "tcadif": "^2.1.0"
+    "tcadif": "^2.1.0",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.2.0",
