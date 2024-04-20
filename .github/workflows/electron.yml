@@ -23,7 +23,7 @@ jobs:
     - name: publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish
+      run: npm run publish --from-dry-run
 
   build_on_mac:
     runs-on: macos-latest
@@ -47,7 +47,7 @@ jobs:
     - name: publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish
+      run: npm run publish --from-dry-run
 
 
   build_on_win:
@@ -64,4 +64,4 @@ jobs:
     - name: publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish
+      run: npm run publish --from-dry-run
