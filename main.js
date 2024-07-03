@@ -159,6 +159,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 	var options = {
 		method: 'POST',
 		timeout: 5000,
+		rejectUnauthorized: false,
 		headers: {
 			'Content-Type': 'application/json',
 			'User-Agent': 'SW2WL_v' + app.getVersion(),
