@@ -5,6 +5,17 @@
 * WSJT-X (if you want to use the automatic logging from WSJT-X/Z/Y / FLDigi / Tool which produces UDP-Log-Packets)
 * WaveLog-Account on any WaveLog instance
 
+#### WARNING // IMPORTANT! (When using AppleSilicon Mac)
+If you use a newer mac (with M1,M2,M3, etc.) apple changed their policy for unsigned Apps.
+There's a workaround available, but you need the Terminal aka Shell for that.
+Instructions:
+1. Download Binary/DMG
+2. Copy Binary/DMG to Application-Folder
+3. Launch Terminal.app
+4. Type in the following:
+   - `xattr -d com.apple.quarantine /Applications/WaveLogGate.app`
+   - Launch the Application (should launch now)
+
 #### Setup:
 1. Download Binary
 2. Start Binary (for Windows: Start Binary and after that you have a NEW Binary. One can delete the old one)
