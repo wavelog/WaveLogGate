@@ -4,6 +4,7 @@
 * [FLRig](http://www.w1hkj.com/) properly SetUp to your TRX (if you want to use the CAT-Feature. It's optional!)
 * WSJT-X (if you want to use the automatic logging from WSJT-X/Z/Y / FLDigi / Tool which produces UDP-Log-Packets)
 * WaveLog-Account on any WaveLog instance
+* HTTPS (SSL) has to be enabled for Wavelog to use WLGate
 
 #### WARNING // IMPORTANT! (When using AppleSilicon Mac)
 If you use a newer mac (with M1,M2,M3, etc.) apple changed their policy for unsigned Apps.
