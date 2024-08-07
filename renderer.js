@@ -14,6 +14,8 @@ const {ipcRenderer} = require('electron')
 const bt_save=select("#save");
 const bt_quit=select("#quit");
 const bt_test=select("#test");
+const input_key=select("#wavelog_key");
+const input_url=select("#wavelog_url");
 var oldCat={ vfo: 0, mode: "SSB" };
 
 $(document).ready(function() {
@@ -21,7 +23,7 @@ $(document).ready(function() {
 	cfg=ipcRenderer.sendSync("get_config", '');
 	$("#wavelog_url").val(cfg.wavelog_url);
 	$("#wavelog_key").val(cfg.wavelog_key);
-	$("#wavelog_id").val(cfg.wavelog_id);
+	// $("#wavelog_id").val(cfg.wavelog_id);
 	$("#wavelog_radioname").val(cfg.wavelog_radioname);
 	$("#flrig_host").val(cfg.flrig_host);
 	$("#flrig_port").val(cfg.flrig_port);
@@ -64,6 +66,16 @@ $(document).ready(function() {
 		}
 		console.log(x);
 	});
+
+	input_key.addEventListener('input', () => {
+		getStations();
+	});
+	input_url.addEventListener('input', () => {
+		getStations();
+	});
+	if (cfg.wavelog_key != "" && cfg.wavelog_url != "") {
+		getStations();
+	}
 
 	getsettrx();
 
@@ -204,4 +216,30 @@ function updateUtcTime() {
 	const formattedTime = `${hours}:${minutes}:${seconds}z`;
 
 	document.getElementById('utc').innerHTML = formattedTime;
+}
+
+async function getStations() {
+	let x = await fetch(cfg.wavelog_url + '/api/station_info/' + cfg.wavelog_key, {
+		method: 'GET',
+		rejectUnauthorized: false,
+		headers: {
+			Accept: 'application.json',
+			'Content-Type': 'application/json',
+		},
+	});
+	fillDropdown(await x.json());
+}
+
+function fillDropdown(data) {
+	let select = $('#wavelog_id');
+	select.empty();
+	select.prop('disabled', false);
+	
+	data.forEach(function(station) {
+		let optionText = station.station_profile_name + " (" + station.station_callsign + ", ID: " + station.station_id + ")";
+		let optionValue = station.station_id;
+		select.append(new Option(optionText, optionValue));
+	});
+
+	select.val(cfg.wavelog_id);
 }
