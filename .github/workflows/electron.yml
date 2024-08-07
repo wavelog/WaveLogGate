@@ -1,11 +1,8 @@
-# name of your github action
 name: BuildnPub_WLGate
-# this will help you specify where to run 
 on:
   push:
     branches:
-    # this will run on the electron branch
-      - master
+      - mac_action
   workflow_dispatch:
 
 jobs:
@@ -18,12 +15,10 @@ jobs:
         node-version: 21
     - name: install dependencies
       run: npm install
-    - name: build
-      run: npm run make -- --platform linux --arch=x64
-    - name: publish
+    - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish --from-dry-run
+      run: npx electron-forge publish --platform linux --arch=x64
 
   build_on_mac:
     runs-on: macos-14
@@ -42,12 +37,10 @@ jobs:
         npm install -g appdmg@0.6.6
     - name: install dependencies
       run: npm install
-    - name: build
-      run: npm run make --arch=universal
-    - name: publish
+    - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish --from-dry-run
+      run: npx electron-forge publish --arch=universal
 
 
   build_on_win:
@@ -59,9 +52,7 @@ jobs:
         node-version: 21
     - name: install dependencies
       run: npm install
-    - name: build
-      run: npm run make
-    - name: publish
+    - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish --from-dry-run
+      run: npx electron-forge publish
