@@ -2,7 +2,7 @@ name: BuildnPub_WLGate
 on:
   push:
     branches:
-      - mac_action
+      - master
   workflow_dispatch:
 
 jobs:

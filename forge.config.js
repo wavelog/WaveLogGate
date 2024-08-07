@@ -10,7 +10,7 @@ module.exports = {
 			name: '@electron-forge/publisher-github',
 			config: {
 				repository: {
-					owner: 'HB9HIL',
+					owner: 'wavelog',
 					name: 'WaveLogGate'
 				},
 				prerelease: false
