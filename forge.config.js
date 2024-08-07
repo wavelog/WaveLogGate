@@ -10,7 +10,7 @@ module.exports = {
 			name: '@electron-forge/publisher-github',
 			config: {
 				repository: {
-					owner: 'wavelog',
+					owner: 'HB9HIL',
 					name: 'WaveLogGate'
 				},
 				prerelease: false
@@ -25,8 +25,9 @@ module.exports = {
 		},
 		{
 			name: '@electron-forge/maker-dmg',
-			config: { format: 'ULFO' },
+			config: { format: 'UDZO' },
 			platforms: ['darwin'],
+			arch: ['universal'],
 		},
 		{
 			name: '@electron-forge/maker-deb',
