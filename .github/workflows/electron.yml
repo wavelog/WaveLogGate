@@ -10,9 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-node@master
-      with:
-        node-version: 21
     - name: install dependencies
       run: npm install
     - name: build and publish
@@ -24,9 +21,6 @@ jobs:
     runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-node@master
-      with:
-        node-version: 21
     - name: setup python
       uses: actions/setup-python@v5
       with:
@@ -47,9 +41,6 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-node@master
-      with:
-        node-version: 21
     - name: install dependencies
       run: npm install
     - name: build and publish
