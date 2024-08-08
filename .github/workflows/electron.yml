@@ -1,10 +1,7 @@
-# name of your github action
 name: BuildnPub_WLGate
-# this will help you specify where to run 
 on:
   push:
     branches:
-    # this will run on the electron branch
       - master
   workflow_dispatch:
 
@@ -12,23 +9,21 @@ jobs:
   build_on_linux:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - uses: actions/setup-node@master
       with:
         node-version: 21
     - name: install dependencies
       run: npm install
-    - name: build
-      run: npm run make -- --platform linux --arch=x64
-    - name: publish
+    - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish --from-dry-run
+      run: npx electron-forge publish --platform linux --arch=x64
 
   build_on_mac:
     runs-on: macos-14
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - uses: actions/setup-node@master
       with:
         node-version: 21
@@ -42,26 +37,22 @@ jobs:
         npm install -g appdmg@0.6.6
     - name: install dependencies
       run: npm install
-    - name: build
-      run: npm run make --arch=universal
-    - name: publish
+    - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish --from-dry-run
+      run: npx electron-forge publish --arch=universal
 
 
   build_on_win:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - uses: actions/setup-node@master
       with:
         node-version: 21
     - name: install dependencies
       run: npm install
-    - name: build
-      run: npm run make
-    - name: publish
+    - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npm run publish --from-dry-run
+      run: npx electron-forge publish
