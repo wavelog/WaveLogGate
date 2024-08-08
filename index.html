@@ -87,6 +87,16 @@
 		border: 1px solid #727272;
 	}
 
+	.form-control:focus {
+		color: inherit;
+		background-color: #1c1c1c;
+	}
+
+	.form-control:disabled, .form-control[readonly] {
+    	background-color: #3e3e3e;
+		opacity: 1;
+	}
+
 	#buttonsRow {
 		position: fixed;
 		bottom: 8px;
@@ -143,9 +153,10 @@
 						</div>
 						<div class="col">
 							<div class="mb-3">
-								<label for="wavelog_key">Wavelog-Station-ID</label>
-								<input type="number" class="form-control form-control-sm" name="wavelog_id"
-									id="wavelog_id" value="" />
+								<label for="wavelog_id">Wavelog-Station-ID</label>
+								<select id="wavelog_id" class="form-control form-control-sm" disabled>
+									<option value="">No stations loaded</option>
+								</select>
 							</div>
 						</div>
 					</div>
