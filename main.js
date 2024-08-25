@@ -229,7 +229,7 @@ WServer.on('message',async function(msg,info){
 			xml.parseString(msg.toString(), function (err,dat) {
 				parsedXML=dat;
 			});
-			let qsodatum = new Date(Date.parse(parsedXML.contactinfo.timestamp[0]));
+			let qsodatum = new Date(Date.parse(parsedXML.contactinfo.timestamp[0]+"Z")); // Added Z to make it UTC
 			qsodat=fmt(qsodatum);
 			if (parsedXML.contactinfo.mode[0] == 'USB' || parsedXML.contactinfo.mode[0] == 'LSB') {	 // TCADIF lib is not capable of using USB/LSB
 				parsedXML.contactinfo.mode[0]='SSB';
