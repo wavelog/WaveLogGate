@@ -185,6 +185,7 @@ async function informWavelog(CAT) {
 	let data={ radio: "WLGate", key: cfg.wavelog_key, radio: cfg.wavelog_radioname, frequency: (CAT.vfo), mode: CAT.mode };
 	let x=await fetch(cfg.wavelog_url + '/api/radio', {
 		method: 'POST',
+		rejectUnauthorized: false,
 		headers: {
 			Accept: 'application.json',
 			'Content-Type': 'application/json',
