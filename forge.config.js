@@ -32,7 +32,7 @@ module.exports = {
 		{
 			name: '@electron-forge/maker-deb',
 			config: { "bin":"wlgate" },
-			arch: ['x86']
+			arch: ['x86','armv7l']
 		},
 	],
 	plugins: [
