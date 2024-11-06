@@ -12,10 +12,14 @@ jobs:
     - uses: actions/checkout@v4
     - name: install dependencies
       run: npm install
-    - name: build and publish
+    - name: build and publish x64
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --platform linux --arch=x64
+    - name: build and publish armhf
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: npx electron-forge publish --platform linux --arch=armv7l
 
   build_on_mac:
     runs-on: macos-14
