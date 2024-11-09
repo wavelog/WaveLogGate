@@ -20,6 +20,7 @@ var defaultcfg = {
 	wavelog_key: "mykey",
 	wavelog_id: 0,
 	wavelog_radioname: 'WLGate',
+	wavelog_pmode: true,
 	flrig_host: '127.0.0.1',
 	flrig_port: '12345',
 	flrig_ena: false,
@@ -338,16 +339,18 @@ async function settrx(qrg) {
 	let url="http://"+defaultcfg.flrig_host+':'+defaultcfg.flrig_port+'/';
 	x=await httpPost(url,options,postData);
 
-	postData= '<?xml version="1.0"?>';
-	postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
-	var options = {
-		method: 'POST',
-		headers: {
-			'User-Agent': 'SW2WL_v' + app.getVersion(),
-			'Content-Length': postData.length
-		}
-	};
-	x=await httpPost(url,options,postData);
+	if (defaultcfg.wavelog_pmode) {
+		postData= '<?xml version="1.0"?>';
+		postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
+		var options = {
+			method: 'POST',
+			headers: {
+				'User-Agent': 'SW2WL_v' + app.getVersion(),
+				'Content-Length': postData.length
+			}
+		};
+		x=await httpPost(url,options,postData);
+	}
 
 	return true;
 }
