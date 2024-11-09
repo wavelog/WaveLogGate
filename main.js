@@ -258,7 +258,12 @@ WServer.on('message',async function(msg,info){
 				} ]};
 		} catch (e) {}
 	} else {
-		adobject=parseADIF(msg.toString());
+		try {
+			adobject=parseADIF(msg.toString());
+		} catch(e) {
+			tomsg('<div class="alert alert-danger" role="alert">Received broken ADIF</div>');
+			return;
+		}
 	}
 	var plainret='';
 	if (adobject.qsos.length>0) {
