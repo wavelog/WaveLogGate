@@ -93,7 +93,7 @@ $(document).ready(function() {
 
 	$("#config-tab").on("click",function() {
 		obj={};
-		obj.width=420;
+		obj.width=430;
 		obj.height=550;
 		obj.ani=false;
 		resizeme(obj);
@@ -101,7 +101,7 @@ $(document).ready(function() {
 
 	$("#status-tab").on("click",function() {
 		obj={};
-		obj.width=420;
+		obj.width=430;
 		obj.height=250;
 		obj.ani=false;
 		resizeme(obj);

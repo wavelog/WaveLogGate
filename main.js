@@ -42,7 +42,7 @@ storage.has('basic', function(error, hasKey) {
 
 function createWindow () {
 	const mainWindow = new BrowserWindow({
-		width: 420,
+		width: 430,
 		height: 250,
 		resizable: false,
 		autoHideMenuBar: app.isPackaged,
