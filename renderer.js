@@ -75,6 +75,9 @@ $(document).ready(function() {
 	input_url.addEventListener('change', () => {
 		getStations();
 	});
+	$('#reload_icon').on('click', () => {
+		getStations();
+	});
 	if (cfg.wavelog_key != "" && cfg.wavelog_url != "") {
 		getStations();
 	}
