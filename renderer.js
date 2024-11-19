@@ -69,10 +69,10 @@ $(document).ready(function() {
 		console.log(x);
 	});
 
-	input_key.addEventListener('input', () => {
+	input_key.addEventListener('change', () => {
 		getStations();
 	});
-	input_url.addEventListener('input', () => {
+	input_url.addEventListener('change', () => {
 		getStations();
 	});
 	if (cfg.wavelog_key != "" && cfg.wavelog_url != "") {
@@ -222,15 +222,30 @@ function updateUtcTime() {
 }
 
 async function getStations() {
-	let x = await fetch(cfg.wavelog_url + '/api/station_info/' + cfg.wavelog_key, {
-		method: 'GET',
-		rejectUnauthorized: false,
-		headers: {
-			Accept: 'application.json',
-			'Content-Type': 'application/json',
-		},
-	});
-	fillDropdown(await x.json());
+	let select = $('#wavelog_id');
+	select.empty();
+	select.prop('disabled', true);
+	try {
+		let x = await fetch($('#wavelog_url').val().trim() + '/api/station_info/' + $('#wavelog_key').val().trim(), {
+			method: 'GET',
+			rejectUnauthorized: false,
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+			},
+		});
+
+		if (!x.ok) {
+			throw new Error(`HTTP error! Status: ${x.status}`);
+		}
+
+		let data = await x.json();
+		fillDropdown(data);
+
+	} catch (error) {
+		select.append(new Option('Failed to load stations', '0'));
+		console.error('Could not load station locations:', error.message);
+	}
 }
 
 function fillDropdown(data) {
@@ -244,5 +259,9 @@ function fillDropdown(data) {
 		select.append(new Option(optionText, optionValue));
 	});
 
-	select.val(cfg.wavelog_id);
+	if (cfg.wavelog_id && data.some(station => station.station_id == cfg.wavelog_id)) {
+		select.val(cfg.wavelog_id);
+	} else {
+		select.val(data.length > 0 ? data[0].station_id : null);
+	}
 }
