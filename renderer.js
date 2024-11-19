@@ -208,10 +208,14 @@ async function informWavelog(CAT) {
 	let data = { 
 		radio: "WLGate", 
 		key: cfg.wavelog_key, 
-		radio: cfg.wavelog_radioname, 
-		power: CAT.power,
-		// ptt: CAT.ptt,   // maybe later
+		radio: cfg.wavelog_radioname
 	};
+	if (CAT.power !== undefined) {
+		data.power = CAT.power;
+	}
+	// if (CAT.ptt !== undefined) {       // not impleented yet in Wavelog, so maybe later
+	// 	data.ptt = CAT.ptt;
+	// }
 	if (CAT.split == '1') {
 		// data.split=true;  // not implemented yet in Wavelog
 		data.frequency=CAT.vfoB;
