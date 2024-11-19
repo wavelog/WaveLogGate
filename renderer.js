@@ -135,6 +135,12 @@ async function get_trx() {
 	let currentCat={};
 	currentCat.vfo=await getInfo('rig.get_vfo');
 	currentCat.mode=await getInfo('rig.get_mode');
+	currentCat.ptt=await getInfo('rig.get_ptt');
+	currentCat.power=await getInfo('rig.get_power');
+	currentCat.split=await getInfo('rig.get_split');
+	currentCat.vfoB=await getInfo('rig.get_vfoB');
+	currentCat.modeB=await getInfo('rig.get_modeB');
+
 	$("#current_trx").html((currentCat.vfo/(1000*1000))+" MHz / "+currentCat.mode);
 	if (!(isDeepEqual(oldCat,currentCat))) {
 		// console.log(currentCat);
@@ -199,7 +205,24 @@ const isObject = (object) => {
 };
 
 async function informWavelog(CAT) {
-	let data={ radio: "WLGate", key: cfg.wavelog_key, radio: cfg.wavelog_radioname, frequency: (CAT.vfo), mode: CAT.mode };
+	let data = { 
+		radio: "WLGate", 
+		key: cfg.wavelog_key, 
+		radio: cfg.wavelog_radioname, 
+		power: CAT.power,
+		// ptt: CAT.ptt,   // maybe later
+	};
+	if (CAT.split == '1') {
+		// data.split=true;  // not implemented yet in Wavelog
+		data.frequency=CAT.vfoB;
+		data.mode=CAT.modeB;
+		data.frequency_rx=CAT.vfo;
+		data.mode_rx=CAT.mode;
+	} else {
+		data.frequency=CAT.vfo;
+		data.mode=CAT.mode;
+	}
+	
 	let x=await fetch(cfg.wavelog_url + '/api/radio', {
 		method: 'POST',
 		rejectUnauthorized: false,
