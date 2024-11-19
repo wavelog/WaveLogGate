@@ -10,23 +10,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-node@master
-      with:
-        node-version: 21
     - name: install dependencies
       run: npm install
-    - name: build and publish
+    - name: build and publish x64
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --platform linux --arch=x64
+    - name: build and publish armhf
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: npx electron-forge publish --platform linux --arch=armv7l
 
   build_on_mac:
     runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-node@master
-      with:
-        node-version: 21
     - name: setup python
       uses: actions/setup-python@v5
       with:
@@ -47,9 +45,6 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-node@master
-      with:
-        node-version: 21
     - name: install dependencies
       run: npm install
     - name: build and publish

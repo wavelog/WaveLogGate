@@ -28,6 +28,7 @@ $(document).ready(function() {
 	$("#flrig_host").val(cfg.flrig_host);
 	$("#flrig_port").val(cfg.flrig_port);
 	$("#flrig_ena").prop("checked", cfg.flrig_ena);
+	$("#wavelog_pmode").prop("checked", cfg.wavelog_pmode);
 
 	bt_save.addEventListener('click', () => {
 		cfg.wavelog_url=$("#wavelog_url").val().trim();
@@ -37,6 +38,7 @@ $(document).ready(function() {
 		cfg.flrig_host=$("#flrig_host").val().trim();
 		cfg.flrig_port=$("#flrig_port").val().trim();
 		cfg.flrig_ena=$("#flrig_ena").is(':checked');
+		cfg.wavelog_pmode=$("#wavelog_pmode").is(':checked');
 		x=ipcRenderer.sendSync("set_config", cfg);
 		console.log(x);
 	});
@@ -197,6 +199,7 @@ async function informWavelog(CAT) {
 	let data={ radio: "WLGate", key: cfg.wavelog_key, radio: cfg.wavelog_radioname, frequency: (CAT.vfo), mode: CAT.mode };
 	let x=await fetch(cfg.wavelog_url + '/api/radio', {
 		method: 'POST',
+		rejectUnauthorized: false,
 		headers: {
 			Accept: 'application.json',
 			'Content-Type': 'application/json',

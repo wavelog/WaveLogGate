@@ -20,6 +20,7 @@ var defaultcfg = {
 	wavelog_key: "mykey",
 	wavelog_id: 0,
 	wavelog_radioname: 'WLGate',
+	wavelog_pmode: true,
 	flrig_host: '127.0.0.1',
 	flrig_port: '12345',
 	flrig_ena: false,
@@ -229,7 +230,7 @@ WServer.on('message',async function(msg,info){
 			xml.parseString(msg.toString(), function (err,dat) {
 				parsedXML=dat;
 			});
-			let qsodatum = new Date(Date.parse(parsedXML.contactinfo.timestamp[0]));
+			let qsodatum = new Date(Date.parse(parsedXML.contactinfo.timestamp[0]+"Z")); // Added Z to make it UTC
 			qsodat=fmt(qsodatum);
 			if (parsedXML.contactinfo.mode[0] == 'USB' || parsedXML.contactinfo.mode[0] == 'LSB') {	 // TCADIF lib is not capable of using USB/LSB
 				parsedXML.contactinfo.mode[0]='SSB';
@@ -257,7 +258,12 @@ WServer.on('message',async function(msg,info){
 				} ]};
 		} catch (e) {}
 	} else {
-		adobject=parseADIF(msg.toString());
+		try {
+			adobject=parseADIF(msg.toString());
+		} catch(e) {
+			tomsg('<div class="alert alert-danger" role="alert">Received broken ADIF</div>');
+			return;
+		}
 	}
 	var plainret='';
 	if (adobject.qsos.length>0) {
@@ -338,16 +344,18 @@ async function settrx(qrg) {
 	let url="http://"+defaultcfg.flrig_host+':'+defaultcfg.flrig_port+'/';
 	x=await httpPost(url,options,postData);
 
-	postData= '<?xml version="1.0"?>';
-	postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
-	var options = {
-		method: 'POST',
-		headers: {
-			'User-Agent': 'SW2WL_v' + app.getVersion(),
-			'Content-Length': postData.length
-		}
-	};
-	x=await httpPost(url,options,postData);
+	if (defaultcfg.wavelog_pmode) {
+		postData= '<?xml version="1.0"?>';
+		postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
+		var options = {
+			method: 'POST',
+			headers: {
+				'User-Agent': 'SW2WL_v' + app.getVersion(),
+				'Content-Length': postData.length
+			}
+		};
+		x=await httpPost(url,options,postData);
+	}
 
 	return true;
 }
