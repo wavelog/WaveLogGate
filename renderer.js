@@ -152,21 +152,21 @@ async function get_trx() {
 
 async function getInfo(which) {
     const response = await fetch(
-        "http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(),
-        {
+        "http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
             method: 'POST',
             // mode: 'no-cors',
-                        headers: {
-                'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
-                'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
-            },
-            body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
-        });
-        const data = await response.text();
+			headers: {
+				'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
+				'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
+			},
+        	body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
+		}
+	);
+	const data = await response.text();
 	var parser = new DOMParser();
-        var xmlDoc = parser.parseFromString(data, "text/xml");
-        var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
-        return qrgplain;
+    var xmlDoc = parser.parseFromString(data, "text/xml");
+    var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
+    return qrgplain;
 }
 
 async function getsettrx() {
