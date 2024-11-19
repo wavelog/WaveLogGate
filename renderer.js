@@ -136,7 +136,7 @@ async function get_trx() {
 	currentCat.vfo=await getInfo('rig.get_vfo');
 	currentCat.mode=await getInfo('rig.get_mode');
 	currentCat.ptt=await getInfo('rig.get_ptt');
-	currentCat.power=await getInfo('rig.get_power');
+	currentCat.power=await getInfo('rig.get_power') ?? 0;
 	currentCat.split=await getInfo('rig.get_split');
 	currentCat.vfoB=await getInfo('rig.get_vfoB');
 	currentCat.modeB=await getInfo('rig.get_modeB');
@@ -210,7 +210,7 @@ async function informWavelog(CAT) {
 		key: cfg.wavelog_key, 
 		radio: cfg.wavelog_radioname
 	};
-	if (CAT.power !== undefined) {
+	if (CAT.power !== undefined && CAT.power !== 0) {
 		data.power = CAT.power;
 	}
 	// if (CAT.ptt !== undefined) {       // not impleented yet in Wavelog, so maybe later
