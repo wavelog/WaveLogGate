@@ -135,6 +135,12 @@ async function get_trx() {
 	let currentCat={};
 	currentCat.vfo=await getInfo('rig.get_vfo');
 	currentCat.mode=await getInfo('rig.get_mode');
+	currentCat.ptt=await getInfo('rig.get_ptt');
+	currentCat.power=await getInfo('rig.get_power') ?? 0;
+	currentCat.split=await getInfo('rig.get_split');
+	currentCat.vfoB=await getInfo('rig.get_vfoB');
+	currentCat.modeB=await getInfo('rig.get_modeB');
+
 	$("#current_trx").html((currentCat.vfo/(1000*1000))+" MHz / "+currentCat.mode);
 	if (!(isDeepEqual(oldCat,currentCat))) {
 		// console.log(currentCat);
@@ -146,21 +152,21 @@ async function get_trx() {
 
 async function getInfo(which) {
     const response = await fetch(
-        "http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(),
-        {
+        "http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
             method: 'POST',
             // mode: 'no-cors',
-                        headers: {
-                'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
-                'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
-            },
-            body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
-        });
-        const data = await response.text();
+			headers: {
+				'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
+				'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
+			},
+        	body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
+		}
+	);
+	const data = await response.text();
 	var parser = new DOMParser();
-        var xmlDoc = parser.parseFromString(data, "text/xml");
-        var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
-        return qrgplain;
+    var xmlDoc = parser.parseFromString(data, "text/xml");
+    var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
+    return qrgplain;
 }
 
 async function getsettrx() {
@@ -199,7 +205,28 @@ const isObject = (object) => {
 };
 
 async function informWavelog(CAT) {
-	let data={ radio: "WLGate", key: cfg.wavelog_key, radio: cfg.wavelog_radioname, frequency: (CAT.vfo), mode: CAT.mode };
+	let data = { 
+		radio: "WLGate", 
+		key: cfg.wavelog_key, 
+		radio: cfg.wavelog_radioname
+	};
+	if (CAT.power !== undefined && CAT.power !== 0) {
+		data.power = CAT.power;
+	}
+	// if (CAT.ptt !== undefined) {       // not impleented yet in Wavelog, so maybe later
+	// 	data.ptt = CAT.ptt;
+	// }
+	if (CAT.split == '1') {
+		// data.split=true;  // not implemented yet in Wavelog
+		data.frequency=CAT.vfoB;
+		data.mode=CAT.modeB;
+		data.frequency_rx=CAT.vfo;
+		data.mode_rx=CAT.mode;
+	} else {
+		data.frequency=CAT.vfo;
+		data.mode=CAT.mode;
+	}
+	
 	let x=await fetch(cfg.wavelog_url + '/api/radio', {
 		method: 'POST',
 		rejectUnauthorized: false,
