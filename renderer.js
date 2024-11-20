@@ -14,6 +14,8 @@ const {ipcRenderer} = require('electron')
 const bt_save=select("#save");
 const bt_quit=select("#quit");
 const bt_test=select("#test");
+const input_key=select("#wavelog_key");
+const input_url=select("#wavelog_url");
 var oldCat={ vfo: 0, mode: "SSB" };
 
 $(document).ready(function() {
@@ -21,7 +23,7 @@ $(document).ready(function() {
 	cfg=ipcRenderer.sendSync("get_config", '');
 	$("#wavelog_url").val(cfg.wavelog_url);
 	$("#wavelog_key").val(cfg.wavelog_key);
-	$("#wavelog_id").val(cfg.wavelog_id);
+	// $("#wavelog_id").val(cfg.wavelog_id);
 	$("#wavelog_radioname").val(cfg.wavelog_radioname);
 	$("#flrig_host").val(cfg.flrig_host);
 	$("#flrig_port").val(cfg.flrig_port);
@@ -67,6 +69,19 @@ $(document).ready(function() {
 		console.log(x);
 	});
 
+	input_key.addEventListener('change', () => {
+		getStations();
+	});
+	input_url.addEventListener('change', () => {
+		getStations();
+	});
+	$('#reload_icon').on('click', () => {
+		getStations();
+	});
+	if (cfg.wavelog_key != "" && cfg.wavelog_url != "") {
+		getStations();
+	}
+
 	getsettrx();
 
 	$("#flrig_ena").on( "click",function() {
@@ -78,7 +93,7 @@ $(document).ready(function() {
 
 	$("#config-tab").on("click",function() {
 		obj={};
-		obj.width=420;
+		obj.width=430;
 		obj.height=550;
 		obj.ani=false;
 		resizeme(obj);
@@ -86,7 +101,7 @@ $(document).ready(function() {
 
 	$("#status-tab").on("click",function() {
 		obj={};
-		obj.width=420;
+		obj.width=430;
 		obj.height=250;
 		obj.ani=false;
 		resizeme(obj);
@@ -207,4 +222,49 @@ function updateUtcTime() {
 	const formattedTime = `${hours}:${minutes}:${seconds}z`;
 
 	document.getElementById('utc').innerHTML = formattedTime;
+}
+
+async function getStations() {
+	let select = $('#wavelog_id');
+	select.empty();
+	select.prop('disabled', true);
+	try {
+		let x = await fetch($('#wavelog_url').val().trim() + '/api/station_info/' + $('#wavelog_key').val().trim(), {
+			method: 'GET',
+			rejectUnauthorized: false,
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+			},
+		});
+
+		if (!x.ok) {
+			throw new Error(`HTTP error! Status: ${x.status}`);
+		}
+
+		let data = await x.json();
+		fillDropdown(data);
+
+	} catch (error) {
+		select.append(new Option('Failed to load stations', '0'));
+		console.error('Could not load station locations:', error.message);
+	}
+}
+
+function fillDropdown(data) {
+	let select = $('#wavelog_id');
+	select.empty();
+	select.prop('disabled', false);
+	
+	data.forEach(function(station) {
+		let optionText = station.station_profile_name + " (" + station.station_callsign + ", ID: " + station.station_id + ")";
+		let optionValue = station.station_id;
+		select.append(new Option(optionText, optionValue));
+	});
+
+	if (cfg.wavelog_id && data.some(station => station.station_id == cfg.wavelog_id)) {
+		select.val(cfg.wavelog_id);
+	} else {
+		select.val(data.length > 0 ? data[0].station_id : null);
+	}
 }
