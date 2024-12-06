@@ -34,6 +34,13 @@ Enable "Secondary UDP Server" like shown in the picture. Do NOT set "UDP Server"
 
 ![image](https://github.com/wavelog/waveloggate/assets/1410708/7238b193-c589-4ae3-97f8-eae506965dff)
 
+#### SetUp/Working with CAT in Wavelog
+1. Open Live-Logging
+2. Set Radio at Radio-Tab
+3. Do QSO
+4. Log
+
+Radio will be saved for next QSO
 
 #### Features
 * When clicking on a spot in WaveLog-Bandmap your TRX with QSY to the Spot.
