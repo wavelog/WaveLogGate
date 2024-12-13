@@ -200,7 +200,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 		})
 
 		req.on('error', (err) => {
-			writeToFile(adif)
+			writeToFile(adif, o_cfg.wavelog_failover_file);
 			rej=true;
 			req.destroy();
 			result.resString='{"status":"failed","reason":"internet problem"}';
@@ -208,7 +208,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 		})
 
 		req.on('timeout', (err) => {
-			writeToFile(adif)
+			writeToFile(adif, o_cfg.wavelog_failover_file);
 			rej=true;
 			req.destroy();
 			result.resString='{"status":"failed","reason":"timeout"}';
@@ -411,9 +411,9 @@ function fmt(spotDate) {
 	return retstr;
 }
 
-function writeToFile(adif) {
-	if (o_cfg.wavelog_failover_file != undefined && o_cfg.wavelog_failover_file != "") {
-		fs.appendFile(o_cfg.wavelog_failover_file, adif + '\n', (err) => {
+function writeToFile(adif, path) {
+	if (path != undefined && path != "") {
+		fs.appendFile(path, adif + '\n', (err) => {
 			if (err) {
 				// err
 			}
