@@ -92,8 +92,9 @@
 		background-color: #1c1c1c;
 	}
 
-	.form-control:disabled, .form-control[readonly] {
-    	background-color: #3e3e3e;
+	.form-control:disabled,
+	.form-control[readonly] {
+		background-color: #3e3e3e;
 		opacity: 1;
 	}
 
@@ -112,14 +113,14 @@
 		vertical-align: middle;
 		fill: white;
 	}
-	
+
 	label {
 		display: flex;
 		align-items: center;
 	}
-	
+
 	label svg {
-		cursor: pointer; 
+		cursor: pointer;
 	}
 </style>
 
@@ -129,20 +130,19 @@
 		<div class="card-header">
 			<ul class="nav nav-tabs card-header-tabs nav-fill">
 				<li class="nav-item">
-					<a class="nav-link active" id="status-tab" data-toggle="tab" data-target="#status" type="button" href="#status" role="tab"
-						aria-controls="status" aria-selected="true">Status</a>
+					<a class="nav-link active" id="status-tab" data-toggle="tab" data-target="#status" type="button"
+						href="#status" role="tab" aria-controls="status" aria-selected="true">Status</a>
 				</li>
 				<li class="nav-item">
-					<a class="nav-link" id="config-tab" data-toggle="tab" data-target="#config" type="button" href="#config" role="tab"
-						aria-controls="config" aria-selected="true">Config</a>
+					<a class="nav-link" id="config-tab" data-toggle="tab" data-target="#config" type="button" href="#config"
+						role="tab" aria-controls="config" aria-selected="true">Config</a>
 				</li>
 			</ul>
 		</div>
 		<div class="card-body">
 			<div class="tab-content" id="myTabContent">
 				<div class="tab-pane fade show active" id="status" role="tabpanel" aria-labelledby="status-tab">
-					<div class="alert alert-danger mt-2" style="text-align: center; display: none" role="alert"
-						id="msg2"></div>
+					<div class="alert alert-danger mt-2" style="text-align: center; display: none" role="alert" id="msg2"></div>
 					<div class="log">
 						<div class="log-qrg" id="current_trx"></div>
 						<div class="log-text">
@@ -156,8 +156,8 @@
 						<div class="col">
 							<div class="mb-3">
 								<label for="wavelog_url">Wavelog-URL</label>
-								<input type="url" class="form-control form-control-sm" name="wavelog_url"
-									id="wavelog_url" placeholder="https://log.jo30.de/index.php" value="" />
+								<input type="url" class="form-control form-control-sm" name="wavelog_url" id="wavelog_url"
+									placeholder="https://log.jo30.de/index.php" value="" />
 							</div>
 						</div>
 					</div>
@@ -165,8 +165,7 @@
 						<div class="col">
 							<div class="mb-3">
 								<label for="wavelog_key">Wavelog-API-Key</label>
-								<input type="text" class="form-control form-control-sm" name="wavelog_key"
-									id="wavelog_key" value="" />
+								<input type="text" class="form-control form-control-sm" name="wavelog_key" id="wavelog_key" value="" />
 							</div>
 						</div>
 						<div class="col">
@@ -174,7 +173,8 @@
 								<label for="wavelog_id" style="display: inline-block;">
 									Wavelog-Station-ID
 									<svg id="reload_icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-										<path d="M463.5 224l8.5 0c13.3 0 24-10.7 24-24l0-128c0-9.7-5.8-18.5-14.8-22.2s-19.3-1.7-26.2 5.2L413.4 96.6c-87.6-86.5-228.7-86.2-315.8 1c-87.5 87.5-87.5 229.3 0 316.8s229.3 87.5 316.8 0c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0c-62.5 62.5-163.8 62.5-226.3 0s-62.5-163.8 0-226.3c62.2-62.2 162.7-62.5 225.3-1L327 183c-6.9 6.9-8.9 17.2-5.2 26.2s12.5 14.8 22.2 14.8l119.5 0z" />
+										<path
+											d="M463.5 224l8.5 0c13.3 0 24-10.7 24-24l0-128c0-9.7-5.8-18.5-14.8-22.2s-19.3-1.7-26.2 5.2L413.4 96.6c-87.6-86.5-228.7-86.2-315.8 1c-87.5 87.5-87.5 229.3 0 316.8s229.3 87.5 316.8 0c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0c-62.5 62.5-163.8 62.5-226.3 0s-62.5-163.8 0-226.3c62.2-62.2 162.7-62.5 225.3-1L327 183c-6.9 6.9-8.9 17.2-5.2 26.2s12.5 14.8 22.2 14.8l119.5 0z" />
 									</svg>
 								</label>
 								<select id="wavelog_id" class="form-control form-control-sm" disabled>
@@ -187,8 +187,8 @@
 						<div class="col">
 							<div class="mb-3 col-mb3">
 								<label for="wavelog_radioname">Radio Name</label>
-								<input type="text" class="form-control form-control-sm" name="wavelog_radioname"
-									id="wavelog_radioname" value="" />
+								<input type="text" class="form-control form-control-sm" name="wavelog_radioname" id="wavelog_radioname"
+									value="" />
 							</div>
 						</div>
 						<div class="col">
@@ -197,7 +197,8 @@
 						<div class="col">
 							<div class="mb-1 col-mb-1">
 								<label for="wavelog_pmode" class="text-center">Set MODE via FLRig</label>
-								<input type="checkbox" value="1" class="form-control form-control-sm" name="wavelog_pmode" id="wavelog_pmode" title="Try to set Mode automatically" value="" />
+								<input type="checkbox" value="1" class="form-control form-control-sm" name="wavelog_pmode"
+									id="wavelog_pmode" title="Try to set Mode automatically" value="" />
 							</div>
 						</div>
 					</div>
@@ -205,21 +206,29 @@
 						<div class="col">
 							<div class="mb-3 col-mb-3">
 								<label for="flrig_host">FLRig Host</label>
-								<input type="text" class="form-control form-control-sm" name="flrig_host"
-									id="flrig_host" value="" />
+								<input type="text" class="form-control form-control-sm" name="flrig_host" id="flrig_host" value="" />
 							</div>
 						</div>
 						<div class="col">
 							<div class="mb-2 col-mb-2">
 								<label for="flrig_port">FLRig Port</label>
-								<input type="number" class="form-control form-control-sm" name="flrig_port"
-									id="flrig_port" value="" />
+								<input type="number" class="form-control form-control-sm" name="flrig_port" id="flrig_port" value="" />
 							</div>
 						</div>
 						<div class="col">
 							<div class="mb-1 col-mb-1">
 								<label for="flrig_ena">FLRig Enabled</label>
-								<input type="checkbox" value="1" class="form-control form-control-sm" name="flrig_ena" id="flrig_ena" value="" />
+								<input type="checkbox" value="1" class="form-control form-control-sm" name="flrig_ena" id="flrig_ena"
+									value="" />
+							</div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col">
+							<div class="mb-3">
+								<label for="wavelog_failover_file">Failover ADIF file</label>
+								<input type="text" class="form-control form-control-sm" name="wavelog_failover_file"
+									id="wavelog_failover_file" placeholder="/tmp/not_pushed_by_WLG.adif" value="" />
 							</div>
 						</div>
 					</div>

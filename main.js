@@ -3,6 +3,7 @@ const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
 const xml = require("xml2js");
+const fs = require('fs');
 
 let s_mainWindow;
 let msgbacklog=[];
@@ -16,6 +17,7 @@ var udp = require('dgram');
 
 var q={};
 var defaultcfg = {
+	wavelog_failover_file: '/tmp/not_pushed_by_WLG.adif',
 	wavelog_url: "https://log.jo30.de/index.php",
 	wavelog_key: "mykey",
 	wavelog_id: 0,
@@ -198,6 +200,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 		})
 
 		req.on('error', (err) => {
+			writeToFile(adif)
 			rej=true;
 			req.destroy();
 			result.resString='{"status":"failed","reason":"internet problem"}';
@@ -205,6 +208,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 		})
 
 		req.on('timeout', (err) => {
+			writeToFile(adif)
 			rej=true;
 			req.destroy();
 			result.resString='{"status":"failed","reason":"timeout"}';
@@ -405,6 +409,16 @@ function fmt(spotDate) {
 	retstr.d=y.padStart(4,'0')+m.padStart(2,'0')+d.padStart(2,'0');
 	retstr.t=h.padStart(2,'0')+i.padStart(2,'0')+s.padStart(2,'0');
 	return retstr;
+}
+
+function writeToFile(adif) {
+	if (o_cfg.wavelog_failover_file != undefined && o_cfg.wavelog_failover_file != "") {
+		fs.appendFile(o_cfg.wavelog_failover_file, adif + '\n', (err) => {
+			if (err) {
+				// err
+			}
+		});
+	}
 }
 
 startserver();
