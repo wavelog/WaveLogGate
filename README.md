@@ -59,3 +59,8 @@ Enjoy
 ## Contributing
 
 Contribution is welcome. PRs will only be accepted against the Dev-Branch.
+
+## Troubleshooting
+Since we are not able to test every Linux-Version out there, we're collecting some "workarounds" and tips if there are problems with the Linux-Version.
+* Problem: libasound.so.2 cannot be found AND possible Problems for Raspberry: [Blogpost from DB4SCW (Thank u!)](https://www.db4scw.de/getting-waveloggate-to-run-on-the-raspberry-pi/)
+##
