@@ -20,6 +20,10 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --platform linux --arch=armv7l
+    - name: build and publish arm64
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: npx electron-forge publish --platform linux --arch=armv64
 
   build_on_mac:
     runs-on: macos-14
