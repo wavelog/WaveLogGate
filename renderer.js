@@ -10,6 +10,7 @@
 var cfg={};
 
 const {ipcRenderer} = require('electron')
+const net = require('net');
 
 const bt_save=select("#save");
 const bt_quit=select("#quit");
@@ -28,7 +29,22 @@ $(document).ready(function() {
 	$("#flrig_host").val(cfg.flrig_host);
 	$("#flrig_port").val(cfg.flrig_port);
 	$("#flrig_ena").prop("checked", cfg.flrig_ena);
+	$("#hamlib_ena").prop("checked", cfg.hamlib_ena);
 	$("#wavelog_pmode").prop("checked", cfg.wavelog_pmode);
+
+	$("#flrig_ena").change(function () {
+		if ($(this).prop("checked")) {
+			$("#hamlib_ena").prop("checked", false);
+			$("#flrig_port").val('12345');
+		}
+	});
+
+	$("#hamlib_ena").change(function () {
+		if ($(this).prop("checked")) {
+			$("#flrig_ena").prop("checked", false);
+			$("#flrig_port").val('4532');
+		}
+	});
 
 	bt_save.addEventListener('click', () => {
 		cfg.wavelog_url=$("#wavelog_url").val().trim();
@@ -38,6 +54,7 @@ $(document).ready(function() {
 		cfg.flrig_host=$("#flrig_host").val().trim();
 		cfg.flrig_port=$("#flrig_port").val().trim();
 		cfg.flrig_ena=$("#flrig_ena").is(':checked');
+		cfg.hamlib_ena=$("#hamlib_ena").is(':checked');
 		cfg.wavelog_pmode=$("#wavelog_pmode").is(':checked');
 		x=ipcRenderer.sendSync("set_config", cfg);
 		console.log(x);
@@ -85,6 +102,10 @@ $(document).ready(function() {
 	getsettrx();
 
 	$("#flrig_ena").on( "click",function() {
+		getsettrx();
+	});
+
+	$("#hamlib_ena").on( "click",function() {
 		getsettrx();
 	});
 
@@ -151,26 +172,53 @@ async function get_trx() {
 }
 
 async function getInfo(which) {
-    const response = await fetch(
-        "http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
-            method: 'POST',
-            // mode: 'no-cors',
-			headers: {
-				'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
-				'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
-			},
-        	body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
-		}
-	);
-	const data = await response.text();
-	var parser = new DOMParser();
-    var xmlDoc = parser.parseFromString(data, "text/xml");
-    var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
-    return qrgplain;
+	if (cfg.flrig_ena){
+		const response = await fetch(
+			"http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
+				method: 'POST',
+				// mode: 'no-cors',
+				headers: {
+					'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
+					'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
+				},
+				body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
+			}
+		);
+		const data = await response.text();
+		var parser = new DOMParser();
+		var xmlDoc = parser.parseFromString(data, "text/xml");
+		var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
+		return qrgplain;
+	}
+	if (cfg.hamlib_ena) {
+		var commands = {"rig.get_vfo": "f", "rig.get_mode": "m", "rig.get_ptt": 0, "rig.get_power": 0, "rig.get_split": 0, "rig.get_vfoB": 0, "rig.get_modeB": 0};
+
+		const host = $("#flrig_host").val();
+		const port = parseInt($("#flrig_port").val(), 10);
+
+		return new Promise((resolve, reject) => {
+			if (commands[which]) {
+				const client = net.createConnection({ host, port }, () => client.write(commands[which]));
+				client.on('data', (data) => {
+					data = data.toString()
+					if(data.startsWith("RPRT")){
+						reject();
+					} else {
+						resolve(data.split('\n')[0]);
+					}
+					client.end();
+				});
+				client.on('error', (err) => reject());
+				client.on("close", () => {});
+			} else {
+				resolve(undefined);
+			}
+		});
+	}
 }
 
 async function getsettrx() {
-	if ($("#flrig_ena").is(':checked')) {
+	if ($("#flrig_ena").is(':checked') || $("#hamlib_ena").is(':checked')) {
 		x=await get_trx();
 		setTimeout(() => {
 			getsettrx();

@@ -3,6 +3,7 @@ const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
 const xml = require("xml2js");
+const net = require('net');
 
 let s_mainWindow;
 let msgbacklog=[];
@@ -332,21 +333,9 @@ async function settrx(qrg) {
 	} else {
 		to.mode='USB';
 	}
-	postData= '<?xml version="1.0"?>';
-	postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
-	var options = {
-		method: 'POST',
-		headers: {
-			'User-Agent': 'SW2WL_v' + app.getVersion(),
-			'Content-Length': postData.length
-		}
-	};
-	let url="http://"+defaultcfg.flrig_host+':'+defaultcfg.flrig_port+'/';
-	x=await httpPost(url,options,postData);
-
-	if (defaultcfg.wavelog_pmode) {
+	if (defaultcfg.flrig_ena) {
 		postData= '<?xml version="1.0"?>';
-		postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
+		postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
 		var options = {
 			method: 'POST',
 			headers: {
@@ -354,7 +343,33 @@ async function settrx(qrg) {
 				'Content-Length': postData.length
 			}
 		};
+		let url="http://"+defaultcfg.flrig_host+':'+defaultcfg.flrig_port+'/';
 		x=await httpPost(url,options,postData);
+
+		if (defaultcfg.wavelog_pmode) {
+			postData= '<?xml version="1.0"?>';
+			postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
+			var options = {
+				method: 'POST',
+				headers: {
+					'User-Agent': 'SW2WL_v' + app.getVersion(),
+					'Content-Length': postData.length
+				}
+			};
+			x=await httpPost(url,options,postData);
+		}
+	}
+	if (defaultcfg.hamlib_ena) {
+		const client = net.createConnection({ host: defaultcfg.flrig_host, port: defaultcfg.flrig_port }, () => {
+			client.write("F " + to.qrg + "\n");
+			if (defaultcfg.wavelog_pmode) {
+				client.write("M " + to.mode + "\n-1");
+			}
+			client.end();
+		});
+
+		client.on("error", (err) => {});
+		client.on("close", () => {});
 	}
 
 	return true;
