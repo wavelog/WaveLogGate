@@ -47,6 +47,7 @@ $(document).ready(function() {
 	});
 
 	bt_save.addEventListener('click', () => {
+		cfg=ipcRenderer.sendSync("get_config", '');
 		cfg.wavelog_url=$("#wavelog_url").val().trim();
 		cfg.wavelog_key=$("#wavelog_key").val().trim();
 		cfg.wavelog_id=$("#wavelog_id").val().trim();
@@ -161,7 +162,7 @@ async function get_trx() {
 	currentCat.vfo=await getInfo('rig.get_vfo');
 	currentCat.mode=await getInfo('rig.get_mode');
 	currentCat.ptt=await getInfo('rig.get_ptt');
-	currentCat.power=await getInfo('rig.get_power') ?? 0;
+	if(!cfg.ignore_pwr){currentCat.power=await getInfo('rig.get_power') ?? 0;}
 	currentCat.split=await getInfo('rig.get_split');
 	currentCat.vfoB=await getInfo('rig.get_vfoB');
 	currentCat.modeB=await getInfo('rig.get_modeB');

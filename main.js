@@ -28,6 +28,7 @@ var defaultcfg = {
 	hamlib_host: '127.0.0.1',
 	hamlib_port: '4532',
 	hamlib_ena: false,
+	ignore_pwr: false,
 }
 
 const storage = require('electron-json-storage');
