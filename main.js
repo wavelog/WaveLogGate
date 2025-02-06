@@ -25,6 +25,9 @@ var defaultcfg = {
 	flrig_host: '127.0.0.1',
 	flrig_port: '12345',
 	flrig_ena: false,
+	hamlib_host: '127.0.0.1',
+	hamlib_port: '4532',
+	hamlib_ena: false,
 }
 
 const storage = require('electron-json-storage');
@@ -66,6 +69,37 @@ function createWindow () {
 	return mainWindow;
 }
 
+function createAdvancedWindow (mainWindow) {
+	let advancedWindow;
+	globalShortcut.register('Control+Shift+D', () => {
+		if (!advancedWindow || advancedWindow.isDestroyed()) {
+			const bounds = mainWindow.getBounds();
+			advancedWindow = new BrowserWindow({
+				width: 430,
+				height: 250,
+				//resizable: false,
+				autoHideMenuBar: app.isPackaged,
+				webPreferences: {
+					contextIsolation: false,
+					nodeIntegration: true,
+					devTools: !app.isPackaged,
+					enableRemoteModule: true,
+				},
+				x: bounds.x + bounds.width + 10,
+				y: bounds.y,
+			});
+			if (app.isPackaged) {
+				advancedWindow.setMenu(null);
+			}
+			advancedWindow.loadFile('advanced.html');
+			advancedWindow.setTitle(require('./package.json').name + " V" + require('./package.json').version);
+		} else {
+			advancedWindow.focus();
+		}
+
+	});
+}
+
 ipcMain.on("set_config", async (event,arg) => {
 	// event.returnValue="aha";
  	defaultcfg=arg;
@@ -91,6 +125,12 @@ ipcMain.on("get_config", async (event,arg) => {
 
 ipcMain.on("setCAT", async (event,arg) => {
 	settrx(arg);
+	event.returnValue=true;
+});
+
+ipcMain.on("reload", async (event,arg) => {
+	app.relaunch();
+	app.quit();
 	event.returnValue=true;
 });
 
@@ -120,6 +160,7 @@ ipcMain.on("test", async (event,arg) => {
 
 app.whenReady().then(() => {
 	s_mainWindow=createWindow();
+	createAdvancedWindow(s_mainWindow);
 	globalShortcut.register('Control+Shift+I', () => { return false; });
 	app.on('activate', function () {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow()

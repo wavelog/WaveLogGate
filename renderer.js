@@ -56,6 +56,10 @@ $(document).ready(function() {
 		cfg.flrig_ena=$("#flrig_ena").is(':checked');
 		cfg.hamlib_ena=$("#hamlib_ena").is(':checked');
 		cfg.wavelog_pmode=$("#wavelog_pmode").is(':checked');
+
+		// advanced
+		if ($("#flrig_ena").is(':checked') || cfg.hamlib_ena){cfg.hamlib_ena = false;}
+
 		x=ipcRenderer.sendSync("set_config", cfg);
 		console.log(x);
 	});
@@ -166,7 +170,7 @@ async function get_trx() {
 	if (!(isDeepEqual(oldCat,currentCat))) {
 		// console.log(currentCat);
 		console.log(await informWavelog(currentCat));
-	} 
+	}
 	oldCat=currentCat;
 	return currentCat;
 }
@@ -193,8 +197,13 @@ async function getInfo(which) {
 	if (cfg.hamlib_ena) {
 		var commands = {"rig.get_vfo": "f", "rig.get_mode": "m", "rig.get_ptt": 0, "rig.get_power": 0, "rig.get_split": 0, "rig.get_vfoB": 0, "rig.get_modeB": 0};
 
+<<<<<<< HEAD
+		const host = cfg.hamlib_host;
+		const port = parseInt(cfg.hamlib_port, 10);
+=======
 		const host = $("#flrig_host").val();
 		const port = parseInt($("#flrig_port").val(), 10);
+>>>>>>> 91e56b49cbd4df4dbaca9a018270e49ce6eed908
 
 		return new Promise((resolve, reject) => {
 			if (commands[which]) {
@@ -218,7 +227,11 @@ async function getInfo(which) {
 }
 
 async function getsettrx() {
+<<<<<<< HEAD
+	if ($("#flrig_ena").is(':checked') || cfg.hamlib_ena) {
+=======
 	if ($("#flrig_ena").is(':checked') || $("#hamlib_ena").is(':checked')) {
+>>>>>>> 91e56b49cbd4df4dbaca9a018270e49ce6eed908
 		x=await get_trx();
 		setTimeout(() => {
 			getsettrx();
@@ -240,10 +253,10 @@ const isDeepEqual = (object1, object2) => {
 		const isObjects = isObject(value1) && isObject(value2);
 
 		if ((isObjects && !isDeepEqual(value1, value2)) ||
-		    (!isObjects && value1 !== value2)
-		   ) {
-			   return false;
-		   }
+			(!isObjects && value1 !== value2)
+		) {
+			return false;
+		}
 	}
 	return true;
 };
@@ -253,9 +266,9 @@ const isObject = (object) => {
 };
 
 async function informWavelog(CAT) {
-	let data = { 
-		radio: "WLGate", 
-		key: cfg.wavelog_key, 
+	let data = {
+		radio: "WLGate",
+		key: cfg.wavelog_key,
 		radio: cfg.wavelog_radioname
 	};
 	if (CAT.power !== undefined && CAT.power !== 0) {
@@ -274,7 +287,7 @@ async function informWavelog(CAT) {
 		data.frequency=CAT.vfo;
 		data.mode=CAT.mode;
 	}
-	
+
 	let x=await fetch(cfg.wavelog_url + '/api/radio', {
 		method: 'POST',
 		rejectUnauthorized: false,
@@ -330,7 +343,7 @@ function fillDropdown(data) {
 	let select = $('#wavelog_id');
 	select.empty();
 	select.prop('disabled', false);
-	
+
 	data.forEach(function(station) {
 		let optionText = station.station_profile_name + " (" + station.station_callsign + ", ID: " + station.station_id + ")";
 		let optionValue = station.station_id;
