@@ -21,6 +21,5 @@ $(document).ready(function() {
         x=ipcRenderer.sendSync("set_config", cfg);
         console.log(x);
 
-        ipcRenderer.sendSync("reload", '');
     });
 });

@@ -128,12 +128,6 @@ ipcMain.on("setCAT", async (event,arg) => {
 	event.returnValue=true;
 });
 
-ipcMain.on("reload", async (event,arg) => {
-	app.relaunch();
-	app.quit();
-	event.returnValue=true;
-});
-
 ipcMain.on("quit", async (event,arg) => {
 	app.quit();
 	event.returnValue=true;
