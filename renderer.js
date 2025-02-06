@@ -197,13 +197,8 @@ async function getInfo(which) {
 	if (cfg.hamlib_ena) {
 		var commands = {"rig.get_vfo": "f", "rig.get_mode": "m", "rig.get_ptt": 0, "rig.get_power": 0, "rig.get_split": 0, "rig.get_vfoB": 0, "rig.get_modeB": 0};
 
-<<<<<<< HEAD
 		const host = cfg.hamlib_host;
 		const port = parseInt(cfg.hamlib_port, 10);
-=======
-		const host = $("#flrig_host").val();
-		const port = parseInt($("#flrig_port").val(), 10);
->>>>>>> 91e56b49cbd4df4dbaca9a018270e49ce6eed908
 
 		return new Promise((resolve, reject) => {
 			if (commands[which]) {
@@ -227,11 +222,7 @@ async function getInfo(which) {
 }
 
 async function getsettrx() {
-<<<<<<< HEAD
 	if ($("#flrig_ena").is(':checked') || cfg.hamlib_ena) {
-=======
-	if ($("#flrig_ena").is(':checked') || $("#hamlib_ena").is(':checked')) {
->>>>>>> 91e56b49cbd4df4dbaca9a018270e49ce6eed908
 		x=await get_trx();
 		setTimeout(() => {
 			getsettrx();
