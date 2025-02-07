@@ -1,26 +1,26 @@
 <!DOCTYPE html>
 <html>
 
-<head>
-	<meta charset="UTF-8" />
-	<meta http-equiv="Content-Security-Policy"
-		content="default-src *; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<!-- Bootstrap CSS -->
-	<link rel="stylesheet" href="./node_modules/bootstrap/dist/css/bootstrap.min.css" />
-	<script>let $ = require("jquery");</script>
-	<script>require("popper.js");</script>
-	<script>require("bootstrap");</script>
-</head>
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="Content-Security-Policy"
+		      content="default-src *; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<!-- Bootstrap CSS -->
+		<link rel="stylesheet" href="./node_modules/bootstrap/dist/css/bootstrap.min.css" />
+		<script>let $ = require("jquery");</script>
+		<script>require("popper.js");</script>
+		<script>require("bootstrap");</script>
+	</head>
 
-<style>
-    html, body {
-		overflow-x: hidden;
-		margin: 0;
-		padding: 0;
-		background-color: #303030;
-		color: #c6c6c6;
-	}
+	<style>
+html, body {
+	overflow-x: hidden;
+	margin: 0;
+	padding: 0;
+	background-color: #303030;
+	color: #c6c6c6;
+}
 
 	body {
 		background-color: #303030;
@@ -101,7 +101,7 @@
 	}
 
 	.form-control:disabled, .form-control[readonly] {
-    	background-color: #3e3e3e;
+		background-color: #3e3e3e;
 		opacity: 1;
 	}
 
@@ -129,46 +129,50 @@
 	label svg {
 		cursor: pointer;
 	}
-</style>
+	</style>
 
-<body>
-	<div class="row">
-        <div class="col">
-            <div class="mb-3 col-mb-3">
-                <label for="hamlib_host">Hamlib Host</label>
-                <input type="text" class="form-control form-control-sm" name="hamlib_host"
-                    id="hamlib_host" value="" />
-            </div>
-        </div>
-        <div class="col">
-            <div class="mb-2 col-mb-2">
-                <label for="hamlib_port">Hamlib Port</label>
-                <input type="number" class="form-control form-control-sm" name="hamlib_port"
-                    id="hamlib_port" value="" />
-            </div>
-        </div>
-        <div class="col">
-            <div class="mb-1 col-mb-1">
-                <label for="hamlib_ena">Hamlib Enabled</label>
-                <input type="checkbox" value="1" class="form-control form-control-sm" name="hamlib_ena" id="hamlib_ena" value="" />
-            </div>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col">
-            <div class="mb-1 col-mb-1">
-                <label for="ignore_pwr">Ignore Power</label>
-                <input type="checkbox" value="1" class="form-control form-control-sm" name="ignore_pwr" id="ignore_pwr" title="log out of wavelog to disregard old value" value="" />
-            </div>
-        </div>
-    </div>
-    <div class="row" id="buttonsRow">
-        <div class="col">
-            <div class="mb-3 col-mb-3" style="text-align: left">
-                <button type="button" class="btn btn-primary" id="save"></i>Save</button>
-            </div>
-        </div>
-    </div>
-    <script src="./advanced.js"></script>
-</body>
+	<body>
+		<main>
+			<div class="container">
+				<div class="row">
+					<div class="col">
+						<div class="mb-3 col-mb-3">
+							<label for="hamlib_host">Hamlib Host</label>
+							<input type="text" class="form-control form-control-sm" name="hamlib_host"
+														id="hamlib_host" value="" />
+						</div>
+					</div>
+					<div class="col">
+						<div class="mb-2 col-mb-2">
+							<label for="hamlib_port">Hamlib Port</label>
+							<input type="number" class="form-control form-control-sm" name="hamlib_port"
+														  id="hamlib_port" value="" />
+						</div>
+					</div>
+					<div class="col">
+						<div class="mb-1 col-mb-1">
+							<label for="hamlib_ena">Hamlib Enabled</label>
+							<input type="checkbox" value="1" class="form-control form-control-sm" name="hamlib_ena" id="hamlib_ena" value="" />
+						</div>
+					</div>
+				</div>
+				<div class="row">
+					<div class="col">
+						<div class="mb-1 col-mb-1">
+							<label for="ignore_pwr">Ignore Power</label>
+							<input type="checkbox" value="1" class="form-control form-control-sm" name="ignore_pwr" id="ignore_pwr" title="log out of wavelog to disregard old value" value="" />
+						</div>
+					</div>
+				</div>
+				<div class="row" id="buttonsRow">
+					<div class="col">
+						<div class="mb-3 col-mb-3" style="text-align: left">
+							<button type="button" class="btn btn-primary" id="save"></i>Save</button>
+						</div>
+					</div>
+				</div>
+				<script src="./advanced.js"></script>
+			</div>
+		</main>
+	</body>
 </html>
