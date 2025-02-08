@@ -35,16 +35,6 @@ const storage = require('electron-json-storage');
 
 app.disableHardwareAcceleration(); 
 
-storage.has('basic', function(error, hasKey) {
-	if (!(hasKey)) {
-		storage.set('basic', defaultcfg, function(e) {
-			if (e) throw e;
-		});
-	} else {
-		Object.assign(defaultcfg,storage.getSync('basic'));
-	}
-});
-
 function createWindow () {
 	const mainWindow = new BrowserWindow({
 		width: 430,
@@ -119,16 +109,12 @@ ipcMain.on("resize", async (event,arg) => {
 });
 
 ipcMain.on("get_config", async (event, arg) => {
-    const storedcfg = storage.getSync('basic'); // Einmalig die gespeicherte Konfiguration holen
-    Object.assign(defaultcfg, storedcfg); // defaultcfg mit den gespeicherten Werten aktualisieren
-    
+    const storedcfg = storage.getSync('basic');
     for (const key in storedcfg) {
-        // Überprüfen, ob der gespeicherte Wert kein leerer String und nicht undefined ist
         if (storedcfg[key] !== "" && storedcfg[key] !== undefined) {
             defaultcfg[key] = storedcfg[key];
         }
     }
-    
     event.returnValue = defaultcfg;
 });
 
