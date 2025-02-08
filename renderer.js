@@ -29,22 +29,7 @@ $(document).ready(function() {
 	$("#flrig_host").val(cfg.flrig_host);
 	$("#flrig_port").val(cfg.flrig_port);
 	$("#flrig_ena").prop("checked", cfg.flrig_ena);
-	$("#hamlib_ena").prop("checked", cfg.hamlib_ena);
 	$("#wavelog_pmode").prop("checked", cfg.wavelog_pmode);
-
-	$("#flrig_ena").change(function () {
-		if ($(this).prop("checked")) {
-			$("#hamlib_ena").prop("checked", false);
-			$("#flrig_port").val('12345');
-		}
-	});
-
-	$("#hamlib_ena").change(function () {
-		if ($(this).prop("checked")) {
-			$("#flrig_ena").prop("checked", false);
-			$("#flrig_port").val('4532');
-		}
-	});
 
 	bt_save.addEventListener('click', () => {
 		cfg=ipcRenderer.sendSync("get_config", '');
@@ -59,7 +44,7 @@ $(document).ready(function() {
 		cfg.wavelog_pmode=$("#wavelog_pmode").is(':checked');
 
 		// advanced
-		if ($("#flrig_ena").is(':checked') || cfg.hamlib_ena){cfg.hamlib_ena = false;}
+		if ($("#flrig_ena").is(':checked') && cfg.hamlib_ena){cfg.hamlib_ena = false;}
 
 		x=ipcRenderer.sendSync("set_config", cfg);
 	});

@@ -19,7 +19,7 @@ $(document).ready(function() {
         cfg.hamlib_ena=$("#hamlib_ena").is(':checked');
         cfg.ignore_pwr=$("#ignore_pwr").is(':checked');
 
-        if ($("#hamlib_ena").is(':checked') || cfg.flrig_ena){cfg.flrig_ena = false;}
+        if ($("#hamlib_ena").is(':checked') && cfg.flrig_ena){cfg.flrig_ena = false;}
 
         x=ipcRenderer.sendSync("set_config", cfg);
         // console.log(x);
