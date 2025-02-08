@@ -23,6 +23,7 @@ $(document).ready(function() {
 	cfg=ipcRenderer.sendSync("get_config", '');
 	$("#wavelog_url").val(cfg.wavelog_url);
 	$("#wavelog_key").val(cfg.wavelog_key);
+	$("#wavelog_failover_file").val(cfg.wavelog_failover_file);
 	// $("#wavelog_id").val(cfg.wavelog_id);
 	$("#wavelog_radioname").val(cfg.wavelog_radioname);
 	$("#flrig_host").val(cfg.flrig_host);
@@ -32,6 +33,7 @@ $(document).ready(function() {
 
 	bt_save.addEventListener('click', () => {
 		cfg.wavelog_url=$("#wavelog_url").val().trim();
+		cfg.wavelog_failover_file=$("#wavelog_failover_file").val().trim()
 		cfg.wavelog_key=$("#wavelog_key").val().trim();
 		cfg.wavelog_id=$("#wavelog_id").val().trim();
 		cfg.wavelog_radioname=$("#wavelog_radioname").val().trim();
@@ -50,6 +52,7 @@ $(document).ready(function() {
 	bt_test.addEventListener('click', () => {
 		cfg.wavelog_url=$("#wavelog_url").val().trim();
 		cfg.wavelog_key=$("#wavelog_key").val().trim();
+		cfg.wavelog_failover_file=$("#wavelog_failover_file").val().trim()
 		cfg.wavelog_id=$("#wavelog_id").val().trim();
 		cfg.wavelog_radioname=$("#wavelog_radioname").val().trim();
 		x=(ipcRenderer.sendSync("test", cfg));
