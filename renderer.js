@@ -10,6 +10,7 @@
 var cfg={};
 
 const {ipcRenderer} = require('electron')
+const net = require('net');
 
 const bt_save=select("#save");
 const bt_quit=select("#quit");
@@ -31,6 +32,7 @@ $(document).ready(function() {
 	$("#wavelog_pmode").prop("checked", cfg.wavelog_pmode);
 
 	bt_save.addEventListener('click', () => {
+		cfg=ipcRenderer.sendSync("get_config", '');
 		cfg.wavelog_url=$("#wavelog_url").val().trim();
 		cfg.wavelog_key=$("#wavelog_key").val().trim();
 		cfg.wavelog_id=$("#wavelog_id").val().trim();
@@ -38,9 +40,13 @@ $(document).ready(function() {
 		cfg.flrig_host=$("#flrig_host").val().trim();
 		cfg.flrig_port=$("#flrig_port").val().trim();
 		cfg.flrig_ena=$("#flrig_ena").is(':checked');
+		cfg.hamlib_ena=$("#hamlib_ena").is(':checked');
 		cfg.wavelog_pmode=$("#wavelog_pmode").is(':checked');
+
+		// advanced
+		if ($("#flrig_ena").is(':checked') && cfg.hamlib_ena){cfg.hamlib_ena = false;}
+
 		x=ipcRenderer.sendSync("set_config", cfg);
-		console.log(x);
 	});
 
 	bt_quit.addEventListener('click', () => {
@@ -66,7 +72,6 @@ $(document).ready(function() {
 			$("#msg2").show();
 			$("#msg2").html("Test failed. Reason: "+x.payload.reason);
 		}
-		console.log(x);
 	});
 
 	input_key.addEventListener('change', () => {
@@ -85,6 +90,10 @@ $(document).ready(function() {
 	getsettrx();
 
 	$("#flrig_ena").on( "click",function() {
+		getsettrx();
+	});
+
+	$("#hamlib_ena").on( "click",function() {
 		getsettrx();
 	});
 
@@ -136,7 +145,7 @@ async function get_trx() {
 	currentCat.vfo=await getInfo('rig.get_vfo');
 	currentCat.mode=await getInfo('rig.get_mode');
 	currentCat.ptt=await getInfo('rig.get_ptt');
-	currentCat.power=await getInfo('rig.get_power') ?? 0;
+	if(!cfg.ignore_pwr){currentCat.power=await getInfo('rig.get_power') ?? 0;}
 	currentCat.split=await getInfo('rig.get_split');
 	currentCat.vfoB=await getInfo('rig.get_vfoB');
 	currentCat.modeB=await getInfo('rig.get_modeB');
@@ -145,32 +154,59 @@ async function get_trx() {
 	if (!(isDeepEqual(oldCat,currentCat))) {
 		// console.log(currentCat);
 		console.log(await informWavelog(currentCat));
-	} 
+	}
 	oldCat=currentCat;
 	return currentCat;
 }
 
 async function getInfo(which) {
-    const response = await fetch(
-        "http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
-            method: 'POST',
-            // mode: 'no-cors',
-			headers: {
-				'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
-				'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
-			},
-        	body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
-		}
-	);
-	const data = await response.text();
-	var parser = new DOMParser();
-    var xmlDoc = parser.parseFromString(data, "text/xml");
-    var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
-    return qrgplain;
+	if (cfg.flrig_ena){
+		const response = await fetch(
+			"http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
+				method: 'POST',
+				// mode: 'no-cors',
+				headers: {
+					'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
+					'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
+				},
+				body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
+			}
+		);
+		const data = await response.text();
+		var parser = new DOMParser();
+		var xmlDoc = parser.parseFromString(data, "text/xml");
+		var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
+		return qrgplain;
+	}
+	if (cfg.hamlib_ena) {
+		var commands = {"rig.get_vfo": "f", "rig.get_mode": "m", "rig.get_ptt": 0, "rig.get_power": 0, "rig.get_split": 0, "rig.get_vfoB": 0, "rig.get_modeB": 0};
+
+		const host = cfg.hamlib_host;
+		const port = parseInt(cfg.hamlib_port, 10);
+
+		return new Promise((resolve, reject) => {
+			if (commands[which]) {
+				const client = net.createConnection({ host, port }, () => client.write(commands[which]));
+				client.on('data', (data) => {
+					data = data.toString()
+					if(data.startsWith("RPRT")){
+						reject();
+					} else {
+						resolve(data.split('\n')[0]);
+					}
+					client.end();
+				});
+				client.on('error', (err) => reject());
+				client.on("close", () => {});
+			} else {
+				resolve(undefined);
+			}
+		});
+	}
 }
 
 async function getsettrx() {
-	if ($("#flrig_ena").is(':checked')) {
+	if ($("#flrig_ena").is(':checked') || cfg.hamlib_ena) {
 		x=await get_trx();
 		setTimeout(() => {
 			getsettrx();
@@ -192,10 +228,10 @@ const isDeepEqual = (object1, object2) => {
 		const isObjects = isObject(value1) && isObject(value2);
 
 		if ((isObjects && !isDeepEqual(value1, value2)) ||
-		    (!isObjects && value1 !== value2)
-		   ) {
-			   return false;
-		   }
+			(!isObjects && value1 !== value2)
+		) {
+			return false;
+		}
 	}
 	return true;
 };
@@ -205,9 +241,9 @@ const isObject = (object) => {
 };
 
 async function informWavelog(CAT) {
-	let data = { 
-		radio: "WLGate", 
-		key: cfg.wavelog_key, 
+	let data = {
+		radio: "WLGate",
+		key: cfg.wavelog_key,
 		radio: cfg.wavelog_radioname
 	};
 	if (CAT.power !== undefined && CAT.power !== 0) {
@@ -226,7 +262,7 @@ async function informWavelog(CAT) {
 		data.frequency=CAT.vfo;
 		data.mode=CAT.mode;
 	}
-	
+
 	let x=await fetch(cfg.wavelog_url + '/api/radio', {
 		method: 'POST',
 		rejectUnauthorized: false,
@@ -282,7 +318,7 @@ function fillDropdown(data) {
 	let select = $('#wavelog_id');
 	select.empty();
 	select.prop('disabled', false);
-	
+
 	data.forEach(function(station) {
 		let optionText = station.station_profile_name + " (" + station.station_callsign + ", ID: " + station.station_id + ")";
 		let optionValue = station.station_id;

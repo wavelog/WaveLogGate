@@ -3,6 +3,7 @@ const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
 const xml = require("xml2js");
+const net = require('net');
 
 let s_mainWindow;
 let msgbacklog=[];
@@ -24,21 +25,15 @@ var defaultcfg = {
 	flrig_host: '127.0.0.1',
 	flrig_port: '12345',
 	flrig_ena: false,
+	hamlib_host: '127.0.0.1',
+	hamlib_port: '4532',
+	hamlib_ena: false,
+	ignore_pwr: false,
 }
 
 const storage = require('electron-json-storage');
 
 app.disableHardwareAcceleration(); 
-
-storage.has('basic', function(error, hasKey) {
-	if (!(hasKey)) {
-		storage.set('basic', defaultcfg, function(e) {
-			if (e) throw e;
-		});
-	} else {
-		Object.assign(defaultcfg,storage.getSync('basic'));
-	}
-});
 
 function createWindow () {
 	const mainWindow = new BrowserWindow({
@@ -65,8 +60,38 @@ function createWindow () {
 	return mainWindow;
 }
 
+function createAdvancedWindow (mainWindow) {
+	let advancedWindow;
+	globalShortcut.register('Control+Shift+D', () => {
+		if (!advancedWindow || advancedWindow.isDestroyed()) {
+			const bounds = mainWindow.getBounds();
+			advancedWindow = new BrowserWindow({
+				width: 430,
+				height: 250,
+				resizable: false,
+				autoHideMenuBar: app.isPackaged,
+				webPreferences: {
+					contextIsolation: false,
+					nodeIntegration: true,
+					devTools: !app.isPackaged,
+					enableRemoteModule: true,
+				},
+				x: bounds.x + bounds.width + 10,
+				y: bounds.y,
+			});
+			if (app.isPackaged) {
+				advancedWindow.setMenu(null);
+			}
+			advancedWindow.loadFile('advanced.html');
+			advancedWindow.setTitle(require('./package.json').name + " V" + require('./package.json').version);
+		} else {
+			advancedWindow.focus();
+		}
+
+	});
+}
+
 ipcMain.on("set_config", async (event,arg) => {
-	// event.returnValue="aha";
  	defaultcfg=arg;
 	storage.set('basic', defaultcfg, function(e) {
 		if (e) throw e;
@@ -75,17 +100,20 @@ ipcMain.on("set_config", async (event,arg) => {
 });
 
 ipcMain.on("resize", async (event,arg) => {
-	// event.returnValue="aha";
 	newsize=arg;
 	s_mainWindow.setContentSize(newsize.width,newsize.height,newsize.ani);
 	s_mainWindow.setSize(newsize.width,newsize.height,newsize.ani);
 	event.returnValue=true;
 });
 
-ipcMain.on("get_config", async (event,arg) => {
-	Object.assign(defaultcfg,storage.getSync('basic'));
-	defaultcfg=storage.getSync('basic')
-	event.returnValue=defaultcfg;
+ipcMain.on("get_config", async (event, arg) => {
+    const storedcfg = storage.getSync('basic');
+    for (const key in storedcfg) {
+        if (storedcfg[key] !== "" && storedcfg[key] !== undefined) {
+            defaultcfg[key] = storedcfg[key];
+        }
+    }
+    event.returnValue = defaultcfg;
 });
 
 ipcMain.on("setCAT", async (event,arg) => {
@@ -119,6 +147,7 @@ ipcMain.on("test", async (event,arg) => {
 
 app.whenReady().then(() => {
 	s_mainWindow=createWindow();
+	createAdvancedWindow(s_mainWindow);
 	globalShortcut.register('Control+Shift+I', () => { return false; });
 	app.on('activate', function () {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -332,21 +361,9 @@ async function settrx(qrg) {
 	} else {
 		to.mode='USB';
 	}
-	postData= '<?xml version="1.0"?>';
-	postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
-	var options = {
-		method: 'POST',
-		headers: {
-			'User-Agent': 'SW2WL_v' + app.getVersion(),
-			'Content-Length': postData.length
-		}
-	};
-	let url="http://"+defaultcfg.flrig_host+':'+defaultcfg.flrig_port+'/';
-	x=await httpPost(url,options,postData);
-
-	if (defaultcfg.wavelog_pmode) {
+	if (defaultcfg.flrig_ena) {
 		postData= '<?xml version="1.0"?>';
-		postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
+		postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
 		var options = {
 			method: 'POST',
 			headers: {
@@ -354,7 +371,33 @@ async function settrx(qrg) {
 				'Content-Length': postData.length
 			}
 		};
+		let url="http://"+defaultcfg.flrig_host+':'+defaultcfg.flrig_port+'/';
 		x=await httpPost(url,options,postData);
+
+		if (defaultcfg.wavelog_pmode) {
+			postData= '<?xml version="1.0"?>';
+			postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
+			var options = {
+				method: 'POST',
+				headers: {
+					'User-Agent': 'SW2WL_v' + app.getVersion(),
+					'Content-Length': postData.length
+				}
+			};
+			x=await httpPost(url,options,postData);
+		}
+	}
+	if (defaultcfg.hamlib_ena) {
+		const client = net.createConnection({ host: defaultcfg.flrig_host, port: defaultcfg.flrig_port }, () => {
+			client.write("F " + to.qrg + "\n");
+			if (defaultcfg.wavelog_pmode) {
+				client.write("M " + to.mode + "\n-1");
+			}
+			client.end();
+		});
+
+		client.on("error", (err) => {});
+		client.on("close", () => {});
 	}
 
 	return true;
