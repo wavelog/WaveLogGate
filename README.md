@@ -56,9 +56,19 @@ Radio will be saved for next QSO
 
 Enjoy
 
+## Advanced Settings (Beta!)
+* Press CTRL+SHIFT+D in config-Window. A second window appears.
+* You can enable Hamlib instead of FLRig here.
+* You can disable taking over the Power to Wavelog here.
+* WARNING: This is in Beta-State. The main-config-window may(!) not show all changes. To make sure whats saved, pse restart the Application after changing the advanced-config
+
 ## Contributing
 
 Contribution is welcome. PRs will only be accepted against the Dev-Branch.
+
+## Contributions
+Tnx for contributing:
+[Ove (DK1BOU)](https://github.com/gotoradio) [Northrup](https://github.com/northrup) [Frédéric (ON4PFD)](https://github.com/fred-corp)
 
 ## Troubleshooting
 Since we are not able to test every Linux-Version out there, we're collecting some "workarounds" and tips if there are problems with the Linux-Version.
