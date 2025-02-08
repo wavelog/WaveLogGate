@@ -68,7 +68,7 @@ function createAdvancedWindow (mainWindow) {
 			advancedWindow = new BrowserWindow({
 				width: 430,
 				height: 250,
-				//resizable: false,
+				resizable: false,
 				autoHideMenuBar: app.isPackaged,
 				webPreferences: {
 					contextIsolation: false,
@@ -92,7 +92,6 @@ function createAdvancedWindow (mainWindow) {
 }
 
 ipcMain.on("set_config", async (event,arg) => {
-	// event.returnValue="aha";
  	defaultcfg=arg;
 	storage.set('basic', defaultcfg, function(e) {
 		if (e) throw e;
@@ -101,7 +100,6 @@ ipcMain.on("set_config", async (event,arg) => {
 });
 
 ipcMain.on("resize", async (event,arg) => {
-	// event.returnValue="aha";
 	newsize=arg;
 	s_mainWindow.setContentSize(newsize.width,newsize.height,newsize.ani);
 	s_mainWindow.setSize(newsize.width,newsize.height,newsize.ani);

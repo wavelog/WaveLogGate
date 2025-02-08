@@ -62,7 +62,6 @@ $(document).ready(function() {
 		if ($("#flrig_ena").is(':checked') || cfg.hamlib_ena){cfg.hamlib_ena = false;}
 
 		x=ipcRenderer.sendSync("set_config", cfg);
-		console.log(x);
 	});
 
 	bt_quit.addEventListener('click', () => {
@@ -88,7 +87,6 @@ $(document).ready(function() {
 			$("#msg2").show();
 			$("#msg2").html("Test failed. Reason: "+x.payload.reason);
 		}
-		console.log(x);
 	});
 
 	input_key.addEventListener('change', () => {
