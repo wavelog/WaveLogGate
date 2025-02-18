@@ -133,6 +133,7 @@ ipcMain.on("test", async (event,arg) => {
 		plain=await send2wavelog(arg,DemoAdif, true);
 	} catch (e) {
 		plain=e;
+		console.log(plain);
 	} finally {
 		try {
 			result.payload=JSON.parse(plain.resString);
@@ -185,7 +186,11 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 	clpayload.string=adif;
 	// console.log(clpayload);
 	postData=JSON.stringify(clpayload);
-	const https = require('https');
+	let httpmod='http';
+	if (o_cfg.wavelog_url.toLowerCase().startsWith('https')) {
+		httpmod='https';
+	}
+	const https = require(httpmod);
 	var options = {
 		method: 'POST',
 		timeout: 5000,
