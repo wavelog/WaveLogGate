@@ -251,85 +251,90 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 
 }
 
-WServer = udp.createSocket('udp4');
-WServer.on('error', function(err) {
-	tomsg('Some other Tool blocks Port 2333. Stop it, and restart this');
-});
+const ports = [2333, 16020]; // Liste der Ports, an die Sie binden möchten
 
-WServer.on('message',async function(msg,info){
-	parsedXML={};
-	adobject={};
-	if (msg.toString().includes("xml")) {	// detect if incoming String is XML
-		try {
-			xml.parseString(msg.toString(), function (err,dat) {
-				parsedXML=dat;
-			});
-			let qsodatum = new Date(Date.parse(parsedXML.contactinfo.timestamp[0]+"Z")); // Added Z to make it UTC
-			qsodat=fmt(qsodatum);
-			if (parsedXML.contactinfo.mode[0] == 'USB' || parsedXML.contactinfo.mode[0] == 'LSB') {	 // TCADIF lib is not capable of using USB/LSB
-				parsedXML.contactinfo.mode[0]='SSB';
-			}
-			adobject = { qsos: [
-				{ 
-					CALL: parsedXML.contactinfo.call[0],
-					MODE: parsedXML.contactinfo.mode[0],
-					QSO_DATE_OFF: qsodat.d,
-					QSO_DATE: qsodat.d,
-					TIME_OFF: qsodat.t,
-					TIME_ON: qsodat.t,
-					RST_RCVD: parsedXML.contactinfo.rcv[0],
-					RST_SENT: parsedXML.contactinfo.snt[0],
-					FREQ: ((1*parseInt(parsedXML.contactinfo.txfreq[0]))/100000).toString(),
-					FREQ_RX: ((1*parseInt(parsedXML.contactinfo.rxfreq[0]))/100000).toString(),
-					OPERATOR: parsedXML.contactinfo.operator[0],
-					COMMENT: parsedXML.contactinfo.comment[0],
-					POWER: parsedXML.contactinfo.power[0],
-					STX: parsedXML.contactinfo.sntnr[0],
-					RTX: parsedXML.contactinfo.rcvnr[0],
-					MYCALL: parsedXML.contactinfo.mycall[0],
-					GRIDSQUARE: parsedXML.contactinfo.gridsquare[0],
-					STATION_CALLSIGN: parsedXML.contactinfo.mycall[0]
-				} ]};
-		} catch (e) {}
-	} else {
-		try {
-			adobject=parseADIF(msg.toString());
-		} catch(e) {
-			tomsg('<div class="alert alert-danger" role="alert">Received broken ADIF</div>');
-			return;
-		}
-	}
-	var plainret='';
-	if (adobject.qsos.length>0) {
-		let x={};
-		try {
-			outadif=writeADIF(adobject);
-			plainret=await send2wavelog(defaultcfg,outadif.stringify());
-			x.state=plainret.statusCode;
-			x.payload = JSON.parse(plainret.resString); 
-		} catch(e) {
+ports.forEach(port => {
+	WServer = udp.createSocket('udp4');
+	WServer.on('error', function(err) {
+		tomsg('Some other Tool blocks Port '+port+'. Stop it, and restart this');
+	});
+
+	WServer.on('message',async function(msg,info){
+		parsedXML={};
+		adobject={};
+		if (msg.toString().includes("xml")) {	// detect if incoming String is XML
 			try {
-				x.payload=JSON.parse(e.resString);
-			} catch (ee) {
-				x.state=e.statusCode;
-				x.payload={};
-				x.payload.string=e.resString;
-				x.payload.status='bug';
-			} finally {
-				x.payload.status='bug';
+				xml.parseString(msg.toString(), function (err,dat) {
+					parsedXML=dat;
+				});
+				let qsodatum = new Date(Date.parse(parsedXML.contactinfo.timestamp[0]+"Z")); // Added Z to make it UTC
+				qsodat=fmt(qsodatum);
+				if (parsedXML.contactinfo.mode[0] == 'USB' || parsedXML.contactinfo.mode[0] == 'LSB') {	 // TCADIF lib is not capable of using USB/LSB
+					parsedXML.contactinfo.mode[0]='SSB';
+				}
+				adobject = { qsos: [
+					{ 
+						CALL: parsedXML.contactinfo.call[0],
+						MODE: parsedXML.contactinfo.mode[0],
+						QSO_DATE_OFF: qsodat.d,
+						QSO_DATE: qsodat.d,
+						TIME_OFF: qsodat.t,
+						TIME_ON: qsodat.t,
+						RST_RCVD: parsedXML.contactinfo.rcv[0],
+						RST_SENT: parsedXML.contactinfo.snt[0],
+						FREQ: ((1*parseInt(parsedXML.contactinfo.txfreq[0]))/100000).toString(),
+						FREQ_RX: ((1*parseInt(parsedXML.contactinfo.rxfreq[0]))/100000).toString(),
+						OPERATOR: parsedXML.contactinfo.operator[0],
+						COMMENT: parsedXML.contactinfo.comment[0],
+						POWER: parsedXML.contactinfo.power[0],
+						STX: parsedXML.contactinfo.sntnr[0],
+						RTX: parsedXML.contactinfo.rcvnr[0],
+						MYCALL: parsedXML.contactinfo.mycall[0],
+						GRIDSQUARE: parsedXML.contactinfo.gridsquare[0],
+						STATION_CALLSIGN: parsedXML.contactinfo.mycall[0]
+					} ]};
+			} catch (e) {}
+		} else {
+			try {
+				adobject=parseADIF(msg.toString());
+			} catch(e) {
+				tomsg('<div class="alert alert-danger" role="alert">Received broken ADIF</div>');
+				return;
 			}
 		}
-		if (x.payload.status == 'created') {
-			adobject.created=true;
+		var plainret='';
+		if (adobject.qsos.length>0) {
+			let x={};
+			try {
+				outadif=writeADIF(adobject);
+				plainret=await send2wavelog(defaultcfg,outadif.stringify());
+				x.state=plainret.statusCode;
+				x.payload = JSON.parse(plainret.resString); 
+			} catch(e) {
+				try {
+					x.payload=JSON.parse(e.resString);
+				} catch (ee) {
+					x.state=e.statusCode;
+					x.payload={};
+					x.payload.string=e.resString;
+					x.payload.status='bug';
+				} finally {
+					x.payload.status='bug';
+				}
+			}
+			if (x.payload.status == 'created') {
+				adobject.created=true;
+			} else {
+				adobject.created=false;
+				adobject.fail=x;
+			}
+			s_mainWindow.webContents.send('updateTX', adobject);
+			tomsg('');
 		} else {
-			adobject.created=false;
-			adobject.fail=x;
+			tomsg('<div class="alert alert-danger" role="alert">Set ONLY Secondary UDP-Server to Port 2333 at WSTJ-X</div>');
 		}
-		s_mainWindow.webContents.send('updateTX', adobject);
-		tomsg('');
-	} else {
-		tomsg('<div class="alert alert-danger" role="alert">Set ONLY Secondary UDP-Server to Port 2333 at WSTJ-X</div>');
-	}
+	});
+	WServer.bind(port);
 });
 
 function tomsg(msg) {
@@ -342,8 +347,7 @@ function tomsg(msg) {
 
 function startserver() {
 	try {
-		WServer.bind(2333);
-		tomsg('Waiting for QSO / Listening on UDP 2333');
+		tomsg('Waiting for QSO / Listening on UDP 2333/16020');
 		http.createServer(function (req, res) {
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.writeHead(200, {'Content-Type': 'text/plain'});
