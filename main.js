@@ -251,7 +251,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 
 }
 
-const ports = [2333, 16020]; // Liste der Ports, an die Sie binden möchten
+const ports = [2333, 12060]; // Liste der Ports, an die Sie binden möchten
 
 ports.forEach(port => {
 	WServer = udp.createSocket('udp4');
@@ -347,7 +347,7 @@ function tomsg(msg) {
 
 function startserver() {
 	try {
-		tomsg('Waiting for QSO / Listening on UDP 2333/16020');
+		tomsg('Waiting for QSO / Listening on UDP 2333/12060');
 		http.createServer(function (req, res) {
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.writeHead(200, {'Content-Type': 'text/plain'});
