@@ -92,7 +92,7 @@ function createAdvancedWindow (mainWindow) {
 }
 
 ipcMain.on("set_config", async (event,arg) => {
- 	defaultcfg=arg;
+	defaultcfg=arg;
 	storage.set('basic', defaultcfg, function(e) {
 		if (e) throw e;
 	});
@@ -107,13 +107,24 @@ ipcMain.on("resize", async (event,arg) => {
 });
 
 ipcMain.on("get_config", async (event, arg) => {
-    const storedcfg = storage.getSync('basic');
-    for (const key in storedcfg) {
-        if (storedcfg[key] !== "" && storedcfg[key] !== undefined) {
-            defaultcfg[key] = storedcfg[key];
-        }
-    }
-    event.returnValue = defaultcfg;
+	var storedcfg = storage.getSync('basic');
+	var realcfg={};
+	if (!(storedcfg.wavelog_url) && !(storedcfg.profiles)) { storedcfg=defaultcfg; }	// Old config not present, add default-cfg
+	if (!(storedcfg.profiles)) {	// Old Config without array? Convert it
+		(realcfg.profiles = realcfg.profiles || []).push(storedcfg);
+		realcfg.profiles.push(defaultcfg);
+		realcfg.profile=(storedcfg.profile ?? 0);
+	} else {
+		realcfg=storedcfg;
+	}
+	if ((arg ?? '') !== '') {
+		realcfg.profile=arg;
+	}
+	defaultcfg=realcfg;
+	storage.set('basic', realcfg, function(e) {	// Store one time
+		if (e) throw e;
+	});
+	event.returnValue = realcfg;
 });
 
 ipcMain.on("setCAT", async (event,arg) => {
@@ -174,7 +185,6 @@ function parseADIF(adifdata) {
 function writeADIF(adifObject) {
 	const { ADIF } = require("tcadif");
 	var adiWriter = new ADIF(adifObject);
-	// console.log(adiWriter);
 	return adiWriter;
 }
 
@@ -184,7 +194,6 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 	clpayload.station_profile_id=o_cfg.wavelog_id.trim();
 	clpayload.type='adif';
 	clpayload.string=adif;
-	// console.log(clpayload);
 	postData=JSON.stringify(clpayload);
 	let httpmod='http';
 	if (o_cfg.wavelog_url.toLowerCase().startsWith('https')) {
@@ -307,7 +316,7 @@ ports.forEach(port => {
 			let x={};
 			try {
 				outadif=writeADIF(adobject);
-				plainret=await send2wavelog(defaultcfg,outadif.stringify());
+				plainret=await send2wavelog(defaultcfg.profiles[defaultcfg.profile ?? 0],outadif.stringify());
 				x.state=plainret.statusCode;
 				x.payload = JSON.parse(plainret.resString); 
 			} catch(e) {
@@ -370,7 +379,7 @@ async function settrx(qrg) {
 	} else {
 		to.mode='USB';
 	}
-	if (defaultcfg.flrig_ena) {
+	if (defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_ena) {
 		postData= '<?xml version="1.0"?>';
 		postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
 		var options = {
@@ -380,10 +389,10 @@ async function settrx(qrg) {
 				'Content-Length': postData.length
 			}
 		};
-		let url="http://"+defaultcfg.flrig_host+':'+defaultcfg.flrig_port+'/';
+		let url="http://"+defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_host+':'+defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_port+'/';
 		x=await httpPost(url,options,postData);
 
-		if (defaultcfg.wavelog_pmode) {
+		if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 			postData= '<?xml version="1.0"?>';
 			postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
 			var options = {
@@ -396,10 +405,10 @@ async function settrx(qrg) {
 			x=await httpPost(url,options,postData);
 		}
 	}
-	if (defaultcfg.hamlib_ena) {
-		const client = net.createConnection({ host: defaultcfg.flrig_host, port: defaultcfg.flrig_port }, () => {
+	if (defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_ena) {
+		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_port }, () => {
 			client.write("F " + to.qrg + "\n");
-			if (defaultcfg.wavelog_pmode) {
+			if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 				client.write("M " + to.mode + "\n-1");
 			}
 			client.end();
