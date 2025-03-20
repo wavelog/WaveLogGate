@@ -25,7 +25,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --platform linux --arch=arm64
 
-  build_on_mac:
+  build_on_mac_arm:
     runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
@@ -42,7 +42,26 @@ jobs:
     - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npx electron-forge publish --arch=universal
+      run: npx electron-forge publish --arch=arm64
+
+  build_on_mac_x64:
+    runs-on: macos-14
+    steps:
+    - uses: actions/checkout@v4
+    - name: setup python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.12
+    - name: setup appdmg
+      run: |
+        python3 -m pip install setuptools
+        npm install -g appdmg@0.6.6
+    - name: install dependencies
+      run: npm install
+    - name: build and publish
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: npx electron-forge publish --arch=x64
 
 
   build_on_win:
