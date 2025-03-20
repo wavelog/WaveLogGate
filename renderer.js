@@ -8,45 +8,59 @@
 
 // Shorthand for document.querySelector.
 var cfg={};
+var active_cfg=0;
 
 const {ipcRenderer} = require('electron')
 const net = require('net');
 
+const bt_toggle=select("#toggle");
 const bt_save=select("#save");
 const bt_quit=select("#quit");
 const bt_test=select("#test");
 const input_key=select("#wavelog_key");
 const input_url=select("#wavelog_url");
+
 var oldCat={ vfo: 0, mode: "SSB" };
 
 $(document).ready(function() {
 
-	cfg=ipcRenderer.sendSync("get_config", '');
-	$("#wavelog_url").val(cfg.wavelog_url);
-	$("#wavelog_key").val(cfg.wavelog_key);
-	// $("#wavelog_id").val(cfg.wavelog_id);
-	$("#wavelog_radioname").val(cfg.wavelog_radioname);
-	$("#flrig_host").val(cfg.flrig_host);
-	$("#flrig_port").val(cfg.flrig_port);
-	$("#flrig_ena").prop("checked", cfg.flrig_ena);
-	$("#wavelog_pmode").prop("checked", cfg.wavelog_pmode);
+	load_config();
 
-	bt_save.addEventListener('click', () => {
-		cfg=ipcRenderer.sendSync("get_config", '');
-		cfg.wavelog_url=$("#wavelog_url").val().trim();
-		cfg.wavelog_key=$("#wavelog_key").val().trim();
-		cfg.wavelog_id=$("#wavelog_id").val().trim();
-		cfg.wavelog_radioname=$("#wavelog_radioname").val().trim();
-		cfg.flrig_host=$("#flrig_host").val().trim();
-		cfg.flrig_port=$("#flrig_port").val().trim();
-		cfg.flrig_ena=$("#flrig_ena").is(':checked');
-		cfg.hamlib_ena=$("#hamlib_ena").is(':checked');
-		cfg.wavelog_pmode=$("#wavelog_pmode").is(':checked');
+	bt_toggle.addEventListener('click', async () => {
+		if ($("#toggle").html() == '1') {
+			$("#toggle").html("2");
+			active_cfg=1;
+			await load_config();
+		} else {
+			$("#toggle").html("1");
+			active_cfg=0;
+			await load_config();
+		}
+		$("#test").removeClass('btn-success');
+		$("#test").removeClass('btn-danger');
+		$("#test").addClass('btn-primary');
+		getsettrx();
+	});
+
+	bt_save.addEventListener('click', async () => {
+		// cfg=ipcRenderer.sendSync("get_config", active_cfg);
+		cfg.profile=active_cfg;
+		cfg.profiles[cfg.profile].wavelog_url=$("#wavelog_url").val().trim();
+		cfg.profiles[cfg.profile].wavelog_key=$("#wavelog_key").val().trim();
+		cfg.profiles[cfg.profile].wavelog_id=$("#wavelog_id").val().trim();
+		cfg.profiles[cfg.profile].wavelog_radioname=$("#wavelog_radioname").val().trim();
+		cfg.profiles[cfg.profile].flrig_host=$("#flrig_host").val().trim();
+		cfg.profiles[cfg.profile].flrig_port=$("#flrig_port").val().trim();
+		cfg.profiles[cfg.profile].flrig_ena=$("#flrig_ena").is(':checked');
+		cfg.profiles[cfg.profile].hamlib_ena=$("#hamlib_ena").is(':checked');
+		cfg.profiles[cfg.profile].wavelog_pmode=$("#wavelog_pmode").is(':checked');
 
 		// advanced
-		if ($("#flrig_ena").is(':checked') && cfg.hamlib_ena){cfg.hamlib_ena = false;}
+		if ($("#flrig_ena").is(':checked') && cfg.profiles[cfg.profile].hamlib_ena){
+			cfg.profiles[cfg.profile].hamlib_ena = false;
+		}
 
-		x=ipcRenderer.sendSync("set_config", cfg);
+		cfg=await ipcRenderer.sendSync("set_config", cfg);
 	});
 
 	bt_quit.addEventListener('click', () => {
@@ -54,11 +68,11 @@ $(document).ready(function() {
 	});
 
 	bt_test.addEventListener('click', () => {
-		cfg.wavelog_url=$("#wavelog_url").val().trim();
-		cfg.wavelog_key=$("#wavelog_key").val().trim();
-		cfg.wavelog_id=$("#wavelog_id").val().trim();
-		cfg.wavelog_radioname=$("#wavelog_radioname").val().trim();
-		x=(ipcRenderer.sendSync("test", cfg));
+		cfg.profiles[active_cfg].wavelog_url=$("#wavelog_url").val().trim();
+		cfg.profiles[active_cfg].wavelog_key=$("#wavelog_key").val().trim();
+		cfg.profiles[active_cfg].wavelog_id=$("#wavelog_id").val().trim();
+		cfg.profiles[active_cfg].wavelog_radioname=$("#wavelog_radioname").val().trim();
+		x=(ipcRenderer.sendSync("test", cfg.profiles[active_cfg]));
 		if (x.payload.status == 'created') {
 			$("#test").removeClass('btn-primary');
 			$("#test").removeClass('btn-danger');
@@ -83,18 +97,15 @@ $(document).ready(function() {
 	$('#reload_icon').on('click', () => {
 		getStations();
 	});
-	if (cfg.wavelog_key != "" && cfg.wavelog_url != "") {
-		getStations();
-	}
 
 	getsettrx();
 
-	$("#flrig_ena").on( "click",function() {
-		getsettrx();
+	$("#flrig_ena").on( "click",async function() {
+		await getsettrx();
 	});
 
-	$("#hamlib_ena").on( "click",function() {
-		getsettrx();
+	$("#hamlib_ena").on( "click",async function() {
+		await getsettrx();
 	});
 
 	setInterval(updateUtcTime, 1000);
@@ -117,6 +128,24 @@ $(document).ready(function() {
 	});
 });
 
+async function load_config() {
+	cfg=await ipcRenderer.sendSync("get_config", active_cfg);
+	$("#toggle").html((cfg.profile || 0)+1);
+	$("#wavelog_url").val(cfg.profiles[active_cfg].wavelog_url);
+	$("#wavelog_key").val(cfg.profiles[active_cfg].wavelog_key);
+	// $("#wavelog_id").val(cfg.wavelog_id);
+	$("#wavelog_radioname").val(cfg.profiles[active_cfg].wavelog_radioname);
+	$("#flrig_host").val(cfg.profiles[active_cfg].flrig_host);
+	$("#flrig_port").val(cfg.profiles[active_cfg].flrig_port);
+	$("#flrig_ena").prop("checked", cfg.profiles[active_cfg].flrig_ena);
+	$("#wavelog_pmode").prop("checked", cfg.profiles[active_cfg].wavelog_pmode);
+
+	if (cfg.profiles[active_cfg].wavelog_key != "" && cfg.profiles[active_cfg].wavelog_url != "") {
+		getStations();
+	}
+
+
+}
 function resizeme(size) {
 	x=(ipcRenderer.sendSync("resize", size))
 	return x;
@@ -145,14 +174,15 @@ async function get_trx() {
 	currentCat.vfo=await getInfo('rig.get_vfo');
 	currentCat.mode=await getInfo('rig.get_mode');
 	currentCat.ptt=await getInfo('rig.get_ptt');
-	if(!cfg.ignore_pwr){currentCat.power=await getInfo('rig.get_power') ?? 0;}
+	if(!cfg.profiles[active_cfg].ignore_pwr){
+		currentCat.power=await getInfo('rig.get_power') ?? 0;
+	}
 	currentCat.split=await getInfo('rig.get_split');
 	currentCat.vfoB=await getInfo('rig.get_vfoB');
 	currentCat.modeB=await getInfo('rig.get_modeB');
 
 	$("#current_trx").html((currentCat.vfo/(1000*1000))+" MHz / "+currentCat.mode);
 	if (!(isDeepEqual(oldCat,currentCat))) {
-		// console.log(currentCat);
 		console.log(await informWavelog(currentCat));
 	}
 	oldCat=currentCat;
@@ -160,7 +190,7 @@ async function get_trx() {
 }
 
 async function getInfo(which) {
-	if (cfg.flrig_ena){
+	if (cfg.profiles[active_cfg].flrig_ena){
 		const response = await fetch(
 			"http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
 				method: 'POST',
@@ -178,11 +208,11 @@ async function getInfo(which) {
 		var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
 		return qrgplain;
 	}
-	if (cfg.hamlib_ena) {
+	if (cfg.profiles[active_cfg].hamlib_ena) {
 		var commands = {"rig.get_vfo": "f", "rig.get_mode": "m", "rig.get_ptt": 0, "rig.get_power": 0, "rig.get_split": 0, "rig.get_vfoB": 0, "rig.get_modeB": 0};
 
-		const host = cfg.hamlib_host;
-		const port = parseInt(cfg.hamlib_port, 10);
+		const host = cfg.profiles[active_cfg].hamlib_host;
+		const port = parseInt(cfg.profiles[active_cfg].hamlib_port, 10);
 
 		return new Promise((resolve, reject) => {
 			if (commands[which]) {
@@ -206,8 +236,8 @@ async function getInfo(which) {
 }
 
 async function getsettrx() {
-	if ($("#flrig_ena").is(':checked') || cfg.hamlib_ena) {
-		x=await get_trx();
+	if ($("#flrig_ena").is(':checked') || cfg.profiles[active_cfg].hamlib_ena) {
+		x=get_trx();
 		setTimeout(() => {
 			getsettrx();
 		}, 1000);
@@ -243,8 +273,8 @@ const isObject = (object) => {
 async function informWavelog(CAT) {
 	let data = {
 		radio: "WLGate",
-		key: cfg.wavelog_key,
-		radio: cfg.wavelog_radioname
+		key: cfg.profiles[active_cfg].wavelog_key,
+		radio: cfg.profiles[active_cfg].wavelog_radioname
 	};
 	if (CAT.power !== undefined && CAT.power !== 0) {
 		data.power = CAT.power;
@@ -263,7 +293,7 @@ async function informWavelog(CAT) {
 		data.mode=CAT.mode;
 	}
 
-	let x=await fetch(cfg.wavelog_url + '/api/radio', {
+	let x=await fetch(cfg.profiles[active_cfg].wavelog_url + '/api/radio', {
 		method: 'POST',
 		rejectUnauthorized: false,
 		headers: {
@@ -325,8 +355,8 @@ function fillDropdown(data) {
 		select.append(new Option(optionText, optionValue));
 	});
 
-	if (cfg.wavelog_id && data.some(station => station.station_id == cfg.wavelog_id)) {
-		select.val(cfg.wavelog_id);
+	if (cfg.profiles[active_cfg].wavelog_id && data.some(station => station.station_id == cfg.profiles[active_cfg].wavelog_id)) {
+		select.val(cfg.profiles[active_cfg].wavelog_id);
 	} else {
 		select.val(data.length > 0 ? data[0].station_id : null);
 	}
