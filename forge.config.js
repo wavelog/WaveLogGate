@@ -27,7 +27,7 @@ module.exports = {
 			name: '@electron-forge/maker-dmg',
 			config: { format: 'UDZO' },
 			platforms: ['darwin'],
-			arch: ['universal'],
+			arch: ['x64','arm64'],
 		},
 		{
 			name: '@electron-forge/maker-deb',
