@@ -335,7 +335,11 @@ ports.forEach(port => {
 				adobject.created=true;
 			} else {
 				adobject.created=false;
+				console.log(x);
 				adobject.fail=x;
+				if (x.payload.messages) {
+					adobject.fail.payload.reason=x.payload.messages.join();
+				}
 			}
 			s_mainWindow.webContents.send('updateTX', adobject);
 			tomsg('');
