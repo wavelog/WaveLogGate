@@ -9,6 +9,7 @@
 // Shorthand for document.querySelector.
 var cfg={};
 var active_cfg=0;
+var trxpoll=undefined;
 
 const {ipcRenderer} = require('electron')
 const net = require('net');
@@ -39,7 +40,6 @@ $(document).ready(function() {
 		$("#test").removeClass('btn-success');
 		$("#test").removeClass('btn-danger');
 		$("#test").addClass('btn-primary');
-		getsettrx();
 	});
 
 	bt_save.addEventListener('click', async () => {
@@ -98,16 +98,6 @@ $(document).ready(function() {
 		getStations();
 	});
 
-	getsettrx();
-
-	$("#flrig_ena").on( "click",async function() {
-		await getsettrx();
-	});
-
-	$("#hamlib_ena").on( "click",async function() {
-		await getsettrx();
-	});
-
 	setInterval(updateUtcTime, 1000);
 	window.onload = updateUtcTime;
 
@@ -143,9 +133,11 @@ async function load_config() {
 	if (cfg.profiles[active_cfg].wavelog_key != "" && cfg.profiles[active_cfg].wavelog_url != "") {
 		getStations();
 	}
-
-
+	if (trxpoll === undefined) {
+		getsettrx();
+	}
 }
+
 function resizeme(size) {
 	x=(ipcRenderer.sendSync("resize", size))
 	return x;
@@ -191,22 +183,26 @@ async function get_trx() {
 
 async function getInfo(which) {
 	if (cfg.profiles[active_cfg].flrig_ena){
-		const response = await fetch(
-			"http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
-				method: 'POST',
-				// mode: 'no-cors',
-				headers: {
-					'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
-					'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
-				},
-				body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>'
-			}
-		);
-		const data = await response.text();
-		var parser = new DOMParser();
-		var xmlDoc = parser.parseFromString(data, "text/xml");
-		var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
-		return qrgplain;
+		try {
+			const response = await fetch(
+				"http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
+					method: 'POST',
+					// mode: 'no-cors',
+					headers: {
+						'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
+						'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
+					},
+					body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>',
+				}
+			);
+			const data = await response.text();
+			var parser = new DOMParser();
+			var xmlDoc = parser.parseFromString(data, "text/xml");
+			var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
+			return qrgplain;
+		} catch (e) {
+			return '';
+		}
 	}
 	if (cfg.profiles[active_cfg].hamlib_ena) {
 		var commands = {"rig.get_vfo": "f", "rig.get_mode": "m", "rig.get_ptt": 0, "rig.get_power": 0, "rig.get_split": 0, "rig.get_vfoB": 0, "rig.get_modeB": 0};
@@ -237,11 +233,12 @@ async function getInfo(which) {
 
 async function getsettrx() {
 	if ($("#flrig_ena").is(':checked') || cfg.profiles[active_cfg].hamlib_ena) {
+		console.log('Polling TRX '+trxpoll);
 		x=get_trx();
-		setTimeout(() => {
-			getsettrx();
-		}, 1000);
 	}
+	trxpoll = setTimeout(() => {
+		getsettrx();
+	}, 1000);
 }
 
 const isDeepEqual = (object1, object2) => {
