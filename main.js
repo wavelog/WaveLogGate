@@ -207,8 +207,9 @@ app.whenReady().then(() => {
 				s_mainWindow.hide();
 			}
 		});
-
-		app.dock.hide();
+		if (process.platform === 'darwin') {
+			app.dock.hide();
+		}
 })
 
 app.on('window-all-closed', function () {
