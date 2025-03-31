@@ -140,11 +140,15 @@ ipcMain.on("quit", async (event,arg) => {
 });
 
 function show_noti(arg) {
-	const notification = new Notification({
-		title: 'Waevlog',
-		body: 'QSO logged: '+arg
-	});
-	notification.show();
+	try {
+		const notification = new Notification({
+			title: 'Waevlog',
+			body: arg
+		});
+		notification.show();
+	} catch(e) {
+		console.log("No notification possible on this system / ignoring");
+	}
 }
 
 ipcMain.on("test", async (event,arg) => {
@@ -383,6 +387,7 @@ ports.forEach(port => {
 			}
 			if (x.payload.status == 'created') {
 				adobject.created=true;
+				show_noti("QSO added: "+adobject.qsos[0].CALL);
 			} else {
 				adobject.created=false;
 				console.log(x);
@@ -390,6 +395,7 @@ ports.forEach(port => {
 				if (x.payload.messages) {
 					adobject.fail.payload.reason=x.payload.messages.join();
 				}
+				show_noti("QSO NOT added: "+adobject.qsos[0].CALL);
 			}
 			s_mainWindow.webContents.send('updateTX', adobject);
 			tomsg('');
