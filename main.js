@@ -1,4 +1,4 @@
-const {app, BrowserWindow, Tray, Menu, globalShortcut } = require('electron/main');
+const {app, BrowserWindow, Tray, Notification, Menu, globalShortcut } = require('electron/main');
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
@@ -139,7 +139,16 @@ ipcMain.on("quit", async (event,arg) => {
 	event.returnValue=true;
 });
 
+function show_noti(arg) {
+	const notification = new Notification({
+		title: 'Waevlog',
+		body: 'QSO logged: '+arg
+	});
+	notification.show();
+}
+
 ipcMain.on("test", async (event,arg) => {
+	
 	let result={};
 	let plain;
 	try {
