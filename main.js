@@ -179,7 +179,9 @@ app.whenReady().then(() => {
 	});
 
 	// Create the tray icon
-  	tray = new Tray('icon1616.png');
+	const path = require('path');
+	const iconPath = path.join(__dirname, 'icon1616.png');
+  	tray = new Tray(iconPath);
 
 	const contextMenu = Menu.buildFromTemplate([
 		{ label: 'Show App', click: () => s_mainWindow.show() },
