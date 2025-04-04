@@ -68,7 +68,7 @@ Contribution is welcome. PRs will only be accepted against the Dev-Branch.
 
 ## Contributions
 Tnx for contributing:
-[Ove (DK1BOU)](https://github.com/gotoradio) [Northrup](https://github.com/northrup) [Frédéric (ON4PFD)](https://github.com/fred-corp)
+[gotoradio](https://github.com/gotoradio) [Northrup](https://github.com/northrup) [Frédéric (ON4PFD)](https://github.com/fred-corp)
 
 ## Troubleshooting
 Since we are not able to test every Linux-Version out there, we're collecting some "workarounds" and tips if there are problems with the Linux-Version.
