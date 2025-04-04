@@ -1,10 +1,11 @@
-const {app, BrowserWindow, globalShortcut } = require('electron/main');
+const {app, BrowserWindow, Tray, Notification, Menu, globalShortcut } = require('electron/main');
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
 const xml = require("xml2js");
 const net = require('net');
 
+let tray;
 let s_mainWindow;
 let msgbacklog=[];
 var WServer;
@@ -50,7 +51,7 @@ function createWindow () {
 		}
 	});
 	if (app.isPackaged) {
-	 	mainWindow.setMenu(null);
+		mainWindow.setMenu(null);
 	}
 
 
@@ -133,11 +134,25 @@ ipcMain.on("setCAT", async (event,arg) => {
 });
 
 ipcMain.on("quit", async (event,arg) => {
+	app.isQuitting = true;
 	app.quit();
 	event.returnValue=true;
 });
 
+function show_noti(arg) {
+	try {
+		const notification = new Notification({
+			title: 'Waevlog',
+			body: arg
+		});
+		notification.show();
+	} catch(e) {
+		console.log("No notification possible on this system / ignoring");
+	}
+}
+
 ipcMain.on("test", async (event,arg) => {
+	
 	let result={};
 	let plain;
 	try {
@@ -157,6 +172,12 @@ ipcMain.on("test", async (event,arg) => {
 	}
 });
 
+app.on('before-quit', () => {
+	if (tray) {
+		tray.destroy();
+	}
+});
+
 app.whenReady().then(() => {
 	s_mainWindow=createWindow();
 	createAdvancedWindow(s_mainWindow);
@@ -169,10 +190,43 @@ app.whenReady().then(() => {
 			s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
 		}
 	});
+
+	// Create the tray icon
+	const path = require('path');
+	const iconPath = path.join(__dirname, 'icon1616.png');
+  	tray = new Tray(iconPath);
+
+	const contextMenu = Menu.buildFromTemplate([
+		{ label: 'Show App', click: () => s_mainWindow.show() },
+		{ label: 'Quit', click: () => {
+			console.log("Exiting");
+			app.isQuitting = true;
+			app.quit();
+		}
+		},
+	]);
+
+		tray.setContextMenu(contextMenu);
+		tray.setToolTip(require('./package.json').name + " V" + require('./package.json').version);
+
+		s_mainWindow.on('minimize', (event) => {
+			event.preventDefault();
+			s_mainWindow.hide(); // Hides the window instead of minimizing it to the taskbar
+		});
+
+		s_mainWindow.on('close', (event) => {
+			if (!app.isQuitting) {
+				event.preventDefault();
+				s_mainWindow.hide();
+			}
+		});
+		if (process.platform === 'darwin') {
+			app.dock.hide();
+		}
 })
 
 app.on('window-all-closed', function () {
-	if (process.platform !== 'darwin') app.quit()
+	if (process.platform !== 'darwin') app.quit();
 	app.quit();
 })
 
@@ -333,6 +387,7 @@ ports.forEach(port => {
 			}
 			if (x.payload.status == 'created') {
 				adobject.created=true;
+				show_noti("QSO added: "+adobject.qsos[0].CALL);
 			} else {
 				adobject.created=false;
 				console.log(x);
@@ -340,6 +395,7 @@ ports.forEach(port => {
 				if (x.payload.messages) {
 					adobject.fail.payload.reason=x.payload.messages.join();
 				}
+				show_noti("QSO NOT added: "+adobject.qsos[0].CALL);
 			}
 			s_mainWindow.webContents.send('updateTX', adobject);
 			tomsg('');
