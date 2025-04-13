@@ -1,10 +1,11 @@
-const {app, BrowserWindow, Tray, Notification, Menu, globalShortcut } = require('electron/main');
+const {app, BrowserWindow, Tray, Notification, Menu, globalShortcut, powerSaveBlocker } = require('electron/main');
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
 const xml = require("xml2js");
 const net = require('net');
 
+let powerSaveBlockerId;
 let tray;
 let s_mainWindow;
 let msgbacklog=[];
@@ -44,6 +45,7 @@ function createWindow () {
 		autoHideMenuBar: app.isPackaged,
 		webPreferences: {
 			contextIsolation: false,
+			backgroundThrottling: false,
 			nodeIntegration: true,
 			devTools: !app.isPackaged,
 			enableRemoteModule: true,
@@ -178,7 +180,12 @@ app.on('before-quit', () => {
 	}
 });
 
+app.on('will-quit', () => {
+	powerSaveBlocker.stop(powerSaveBlockerId);
+});
+
 app.whenReady().then(() => {
+	powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
 	s_mainWindow=createWindow();
 	createAdvancedWindow(s_mainWindow);
 	globalShortcut.register('Control+Shift+I', () => { return false; });
