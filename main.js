@@ -144,7 +144,7 @@ ipcMain.on("quit", async (event,arg) => {
 function show_noti(arg) {
 	try {
 		const notification = new Notification({
-			title: 'Waevlog',
+			title: 'Wavelog',
 			body: arg
 		});
 		notification.show();
