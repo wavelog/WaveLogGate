@@ -9,6 +9,7 @@ let powerSaveBlockerId;
 let tray;
 let s_mainWindow;
 let msgbacklog=[];
+let httpServer;
 var WServer;
 
 const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rst_rcvd:2>33 <qso_date:8>20240110 <time_on:6>051855 <qso_date_off:8>20240110 <time_off:6>051855 <band:3>40m <freq:8>7.155783 <station_callsign:5>TE1ST <my_gridsquare:6>JO30OO <eor>';
@@ -175,9 +176,23 @@ ipcMain.on("test", async (event,arg) => {
 });
 
 app.on('before-quit', () => {
-	if (tray) {
-		tray.destroy();
-	}
+    console.log('Shutting down servers...');
+    if (WServer) {
+        WServer.close();
+    }
+    if (httpServer) {
+        httpServer.close();
+    }
+    if (tray) {
+        tray.destroy();
+    }
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, closing servers...');
+    if (WServer) WServer.close();
+    if (httpServer) httpServer.close();
+    process.exit(0);
 });
 
 app.on('will-quit', () => {
@@ -424,7 +439,7 @@ function tomsg(msg) {
 function startserver() {
 	try {
 		tomsg('Waiting for QSO / Listening on UDP 2333');
-		http.createServer(function (req, res) {
+		httpServer = http.createServer(function (req, res) {
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.writeHead(200, {'Content-Type': 'text/plain'});
 			res.end('');
