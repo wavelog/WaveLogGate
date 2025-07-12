@@ -407,7 +407,7 @@ ports.forEach(port => {
 			s_mainWindow.webContents.send('updateTX', adobject);
 			tomsg('');
 		} else {
-			tomsg('<div class="alert alert-danger" role="alert">Set ONLY Secondary UDP-Server to Port 2333 at WSTJ-X</div>');
+			tomsg('<div class="alert alert-danger" role="alert">Set ONLY Secondary UDP-Server to Port 2333 at WSJT-X</div>');
 		}
 	});
 	WServer.bind(port);
