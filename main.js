@@ -252,15 +252,50 @@ app.on('window-all-closed', function () {
 	app.quit();
 })
 
+function normalizeTxPwr(adifdata) {
+	return adifdata.replace(/<TX_PWR:(\d+)>([^<]+)/gi, (match, length, value) => {
+		const cleanValue = value.trim().toLowerCase();
+		
+		const numMatch = cleanValue.match(/^(\d+(?:\.\d+)?)/);
+		if (!numMatch) return match; // not a valid number, return original match
+		
+		let watts = parseFloat(numMatch[1]);
+		
+		// get the unit if present
+		if (cleanValue.includes('kw')) {
+			watts *= 1000;
+		} else if (cleanValue.includes('mw')) {
+			watts *= 0.001;
+		}
+		// if it's just 'w' we assume it's already in watts
+		// would be equal to
+		// } else if (cleanValue.includes('w')) {
+		// 	watts *= 1;
+		// }
+		
+		// get the new length and return the new TX_PWR tag
+		const newValue = watts.toString();
+		return `<TX_PWR:${newValue.length}>${newValue}`;
+	});
+}
+
+function manipulateAdifData(adifdata) {
+	adifdata = normalizeTxPwr(adifdata);
+	// add more manipulation if necessary here
+	// ...
+	return adifdata;
+}
+
 function parseADIF(adifdata) {
 	const { ADIF } = require("tcadif");
-	var adiReader = ADIF.parse(adifdata);
+	const normalizedData = manipulateAdifData(adifdata);
+	const adiReader = ADIF.parse(normalizedData);
 	return adiReader.toObject();
 }
 
 function writeADIF(adifObject) {
 	const { ADIF } = require("tcadif");
-	var adiWriter = new ADIF(adifObject);
+	const adiWriter = new ADIF(adifObject);
 	return adiWriter;
 }
 
