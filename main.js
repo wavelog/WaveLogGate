@@ -402,6 +402,7 @@ ports.forEach(port => {
 						TIME_ON: qsodat.t,
 						RST_RCVD: parsedXML.contactinfo.rcv[0],
 						RST_SENT: parsedXML.contactinfo.snt[0],
+						BAND: parsedXML.contactinfo.band[0] + 'm',
 						FREQ: ((1*parseInt(parsedXML.contactinfo.txfreq[0]))/100000).toString(),
 						FREQ_RX: ((1*parseInt(parsedXML.contactinfo.rxfreq[0]))/100000).toString(),
 						OPERATOR: parsedXML.contactinfo.operator[0],
