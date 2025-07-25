@@ -22,7 +22,7 @@ var q={};
 var defaultcfg = {
 	wavelog_url: "https://log.jo30.de/index.php",
 	wavelog_key: "mykey",
-	wavelog_id: 0,
+	wavelog_id: "0",
 	wavelog_radioname: 'WLGate',
 	wavelog_pmode: true,
 	flrig_host: '127.0.0.1',
