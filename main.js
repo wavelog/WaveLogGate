@@ -478,9 +478,11 @@ function startserver() {
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.writeHead(200, {'Content-Type': 'text/plain'});
 			res.end('');
-			let qrg=req.url.substr(1);
+			let parts = req.url.substr(1).split('/'); 
+			let qrg = parts[0]; 
+			let mode = parts[1] || '';
 			if (Number.isInteger(Number.parseInt(qrg))) {
-				settrx(qrg);
+				settrx(qrg,mode);
 			}
 		}).listen(54321);
 	} catch(e) {
@@ -488,13 +490,17 @@ function startserver() {
 	}
 }
 
-async function settrx(qrg) {
+async function settrx(qrg, mode = '') {
 	let to={};
 	to.qrg=qrg;
-	if ((to.qrg) < 7999000) {
-		to.mode='LSB';
+	if (mode == 'cw') {
+		to.mode='CW';
 	} else {
-		to.mode='USB';
+		if ((to.qrg) < 7999000) {
+			to.mode='LSB';
+		} else {
+			to.mode='USB';
+		}
 	}
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_ena) {
 		postData= '<?xml version="1.0"?>';
