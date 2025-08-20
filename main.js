@@ -9,6 +9,7 @@ let powerSaveBlockerId;
 let tray;
 let s_mainWindow;
 let msgbacklog=[];
+let httpServer;
 var WServer;
 
 const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rst_rcvd:2>33 <qso_date:8>20240110 <time_on:6>051855 <qso_date_off:8>20240110 <time_off:6>051855 <band:3>40m <freq:8>7.155783 <station_callsign:5>TE1ST <my_gridsquare:6>JO30OO <eor>';
@@ -21,7 +22,7 @@ var q={};
 var defaultcfg = {
 	wavelog_url: "https://log.jo30.de/index.php",
 	wavelog_key: "mykey",
-	wavelog_id: 0,
+	wavelog_id: "0",
 	wavelog_radioname: 'WLGate',
 	wavelog_pmode: true,
 	flrig_host: '127.0.0.1',
@@ -144,7 +145,7 @@ ipcMain.on("quit", async (event,arg) => {
 function show_noti(arg) {
 	try {
 		const notification = new Notification({
-			title: 'Waevlog',
+			title: 'Wavelog',
 			body: arg
 		});
 		notification.show();
@@ -175,9 +176,23 @@ ipcMain.on("test", async (event,arg) => {
 });
 
 app.on('before-quit', () => {
-	if (tray) {
-		tray.destroy();
-	}
+    console.log('Shutting down servers...');
+    if (WServer) {
+        WServer.close();
+    }
+    if (httpServer) {
+        httpServer.close();
+    }
+    if (tray) {
+        tray.destroy();
+    }
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, closing servers...');
+    if (WServer) WServer.close();
+    if (httpServer) httpServer.close();
+    process.exit(0);
 });
 
 app.on('will-quit', () => {
@@ -237,15 +252,50 @@ app.on('window-all-closed', function () {
 	app.quit();
 })
 
+function normalizeTxPwr(adifdata) {
+	return adifdata.replace(/<TX_PWR:(\d+)>([^<]+)/gi, (match, length, value) => {
+		const cleanValue = value.trim().toLowerCase();
+		
+		const numMatch = cleanValue.match(/^(\d+(?:\.\d+)?)/);
+		if (!numMatch) return match; // not a valid number, return original match
+		
+		let watts = parseFloat(numMatch[1]);
+		
+		// get the unit if present
+		if (cleanValue.includes('kw')) {
+			watts *= 1000;
+		} else if (cleanValue.includes('mw')) {
+			watts *= 0.001;
+		}
+		// if it's just 'w' we assume it's already in watts
+		// would be equal to
+		// } else if (cleanValue.includes('w')) {
+		// 	watts *= 1;
+		// }
+		
+		// get the new length and return the new TX_PWR tag
+		const newValue = watts.toString();
+		return `<TX_PWR:${newValue.length}>${newValue}`;
+	});
+}
+
+function manipulateAdifData(adifdata) {
+	adifdata = normalizeTxPwr(adifdata);
+	// add more manipulation if necessary here
+	// ...
+	return adifdata;
+}
+
 function parseADIF(adifdata) {
 	const { ADIF } = require("tcadif");
-	var adiReader = ADIF.parse(adifdata);
+	const normalizedData = manipulateAdifData(adifdata);
+	const adiReader = ADIF.parse(normalizedData);
 	return adiReader.toObject();
 }
 
 function writeADIF(adifObject) {
 	const { ADIF } = require("tcadif");
-	var adiWriter = new ADIF(adifObject);
+	const adiWriter = new ADIF(adifObject);
 	return adiWriter;
 }
 
@@ -407,7 +457,7 @@ ports.forEach(port => {
 			s_mainWindow.webContents.send('updateTX', adobject);
 			tomsg('');
 		} else {
-			tomsg('<div class="alert alert-danger" role="alert">Set ONLY Secondary UDP-Server to Port 2333 at WSTJ-X</div>');
+			tomsg('<div class="alert alert-danger" role="alert">Set ONLY Secondary UDP-Server to Port 2333 at WSJT-X</div>');
 		}
 	});
 	WServer.bind(port);
@@ -424,13 +474,15 @@ function tomsg(msg) {
 function startserver() {
 	try {
 		tomsg('Waiting for QSO / Listening on UDP 2333');
-		http.createServer(function (req, res) {
+		httpServer = http.createServer(function (req, res) {
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.writeHead(200, {'Content-Type': 'text/plain'});
 			res.end('');
-			let qrg=req.url.substr(1);
+			let parts = req.url.substr(1).split('/'); 
+			let qrg = parts[0]; 
+			let mode = parts[1] || '';
 			if (Number.isInteger(Number.parseInt(qrg))) {
-				settrx(qrg);
+				settrx(qrg,mode);
 			}
 		}).listen(54321);
 	} catch(e) {
@@ -438,13 +490,17 @@ function startserver() {
 	}
 }
 
-async function settrx(qrg) {
+async function settrx(qrg, mode = '') {
 	let to={};
 	to.qrg=qrg;
-	if ((to.qrg) < 7999000) {
-		to.mode='LSB';
+	if (mode == 'cw') {
+		to.mode='CW';
 	} else {
-		to.mode='USB';
+		if ((to.qrg) < 7999000) {
+			to.mode='LSB';
+		} else {
+			to.mode='USB';
+		}
 	}
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_ena) {
 		postData= '<?xml version="1.0"?>';
