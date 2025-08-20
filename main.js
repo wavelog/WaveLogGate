@@ -198,22 +198,17 @@ process.on('SIGINT', () => {
 });
 
 app.on('will-quit', () => {
-	powerSaveBlocker.stop(powerSaveBlockerId);
+	try {
+		powerSaveBlocker.stop(powerSaveBlockerId);
+	} catch(e) {
+		console.log(e);
+	}
 });
 
 if (!gotTheLock) {
 	app.quit();
 } else {
-	app.on('second-instance', (event, commandLine, workingDirectory) => {
-		// This event is emitted when a second instance is started
-		// You can focus your app window here instead of starting a new one
-		if (mainWindow) {
-			if (mainWindow.isMinimized()) mainWindow.restore();
-			mainWindow.focus();
-		}
-	});
-
-
+	startserver();
 	app.whenReady().then(() => {
 		powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
 		s_mainWindow=createWindow();
@@ -606,5 +601,3 @@ function fmt(spotDate) {
 	retstr.t=h.padStart(2,'0')+i.padStart(2,'0')+s.padStart(2,'0');
 	return retstr;
 }
-
-startserver();
