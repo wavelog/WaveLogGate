@@ -299,6 +299,18 @@ function writeADIF(adifObject) {
 	return adiWriter;
 }
 
+function freqToBand(freq_mz) {
+	const f = parseFloat(freq_mz);
+	if (isNaN(f)) return null;
+
+	const bandMap = require('tcadif/lib/enums/Band');
+	for (const [band, { lowerFreq, upperFreq }] of Object.entries(bandMap))
+		if (f >= parseFloat(lowerFreq) && f <= parseFloat(upperFreq))
+			return band;
+
+	return null;
+}
+
 function send2wavelog(o_cfg,adif, dryrun = false) {
 	let clpayload={};
 	clpayload.key=o_cfg.wavelog_key.trim();
@@ -413,6 +425,8 @@ ports.forEach(port => {
 						GRIDSQUARE: parsedXML.contactinfo.gridsquare[0],
 						STATION_CALLSIGN: parsedXML.contactinfo.mycall[0]
 					} ]};
+				let band = freqToBand(adobject.qsos[0].FREQ);
+				if (band) adobject.qsos[0].BAND = band;
 			} catch (e) {}
 		} else {
 			try {
