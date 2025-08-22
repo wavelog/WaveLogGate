@@ -5,6 +5,8 @@ const http = require('http');
 const xml = require("xml2js");
 const net = require('net');
 
+const gotTheLock = app.requestSingleInstanceLock();
+
 let powerSaveBlockerId;
 let tray;
 let s_mainWindow;
@@ -196,17 +198,25 @@ process.on('SIGINT', () => {
 });
 
 app.on('will-quit', () => {
-	powerSaveBlocker.stop(powerSaveBlockerId);
+	try {
+		powerSaveBlocker.stop(powerSaveBlockerId);
+	} catch(e) {
+		console.log(e);
+	}
 });
 
-app.whenReady().then(() => {
-	powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
-	s_mainWindow=createWindow();
-	createAdvancedWindow(s_mainWindow);
-	globalShortcut.register('Control+Shift+I', () => { return false; });
-	app.on('activate', function () {
-		if (BrowserWindow.getAllWindows().length === 0) createWindow()
-	});
+if (!gotTheLock) {
+	app.quit();
+} else {
+	startserver();
+	app.whenReady().then(() => {
+		powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+		s_mainWindow=createWindow();
+		createAdvancedWindow(s_mainWindow);
+		globalShortcut.register('Control+Shift+I', () => { return false; });
+		app.on('activate', function () {
+			if (BrowserWindow.getAllWindows().length === 0) createWindow()
+		});
 	s_mainWindow.webContents.once('dom-ready', function() {
 		if (msgbacklog.length>0) {
 			s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
@@ -216,11 +226,11 @@ app.whenReady().then(() => {
 	// Create the tray icon
 	const path = require('path');
 	const iconPath = path.join(__dirname, 'icon1616.png');
-  	tray = new Tray(iconPath);
+	tray = new Tray(iconPath);
 
 	const contextMenu = Menu.buildFromTemplate([
 		{ label: 'Show App', click: () => s_mainWindow.show() },
-		{ label: 'Quit', click: () => {
+			{ label: 'Quit', click: () => {
 			console.log("Exiting");
 			app.isQuitting = true;
 			app.quit();
@@ -228,24 +238,25 @@ app.whenReady().then(() => {
 		},
 	]);
 
-		tray.setContextMenu(contextMenu);
-		tray.setToolTip(require('./package.json').name + " V" + require('./package.json').version);
+	tray.setContextMenu(contextMenu);
+	tray.setToolTip(require('./package.json').name + " V" + require('./package.json').version);
 
-		s_mainWindow.on('minimize', (event) => {
+	s_mainWindow.on('minimize', (event) => {
+		event.preventDefault();
+		s_mainWindow.hide(); // Hides the window instead of minimizing it to the taskbar
+	});
+
+	s_mainWindow.on('close', (event) => {
+		if (!app.isQuitting) {
 			event.preventDefault();
-			s_mainWindow.hide(); // Hides the window instead of minimizing it to the taskbar
-		});
-
-		s_mainWindow.on('close', (event) => {
-			if (!app.isQuitting) {
-				event.preventDefault();
-				s_mainWindow.hide();
-			}
-		});
-		if (process.platform === 'darwin') {
-			app.dock.hide();
+			s_mainWindow.hide();
 		}
-})
+	});
+	if (process.platform === 'darwin') {
+		app.dock.hide();
+	}
+	})
+}
 
 app.on('window-all-closed', function () {
 	if (process.platform !== 'darwin') app.quit();
@@ -604,5 +615,3 @@ function fmt(spotDate) {
 	retstr.t=h.padStart(2,'0')+i.padStart(2,'0')+s.padStart(2,'0');
 	return retstr;
 }
-
-startserver();
