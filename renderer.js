@@ -154,9 +154,9 @@ window.TX_API.onUpdateMsg((value) => {
 
 window.TX_API.onUpdateTX((value) => {
 	if (value.created) {
-		$("#log").html('<div class="alert alert-success" role="alert">'+value.qsos[0].TIME_ON+" "+value.qsos[0].CALL+" ("+(value.qsos[0].GRIDSQUARE || 'No Grid')+") on "+value.qsos[0].BAND+" (R:"+(value.qsos[0].RST_RCVD || 'No RST')+" / S:"+(value.qsos[0].RST_SENT || 'No RST')+') - OK</div>');
+		$("#log").html('<div class="alert alert-success" role="alert">'+value.qsos[0].TIME_ON+" "+value.qsos[0].CALL+" ("+(value.qsos[0].GRIDSQUARE || 'No Grid')+") on "+(value.qsos[0].BAND || 'No BAND')+" (R:"+(value.qsos[0].RST_RCVD || 'No RST')+" / S:"+(value.qsos[0].RST_SENT || 'No RST')+') - OK</div>');
 	} else {
-		$("#log").html('<div class="alert alert-danger" role="alert">'+value.qsos[0].TIME_ON+" "+value.qsos[0].CALL+" ("+(value.qsos[0].GRIDSQUARE || 'No Grid')+") on "+value.qsos[0].BAND+" (R:"+(value.qsos[0].RST_RCVD || 'No RST')+" / S:"+(value.qsos[0].RST_SENT || 'No RST')+') - Error<br/>Reason: '+value.fail.payload.reason+'</div>');
+		$("#log").html('<div class="alert alert-danger" role="alert">'+value.qsos[0].TIME_ON+" "+value.qsos[0].CALL+" ("+(value.qsos[0].GRIDSQUARE || 'No Grid')+") on "+(value.qsos[0].BAND || 'NO BAND')+" (R:"+(value.qsos[0].RST_RCVD || 'No RST')+" / S:"+(value.qsos[0].RST_SENT || 'No RST')+') - Error<br/>Reason: '+value.fail.payload.reason+'</div>');
 	}
 })
 
