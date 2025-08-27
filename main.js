@@ -515,7 +515,16 @@ function startserver() {
 	}
 }
 
+async function get_modes() {
+	s_mainWindow.webContents.send('get_info','rig.get_modes');
+}
 async function settrx(qrg, mode = '') {
+	let avail_modes={};
+	try {
+		avail_modes=await get_modes();
+	} catch(e) {
+		avail_modes={};
+	}
 	let to={};
 	to.qrg=qrg;
 	if (mode == 'cw') {

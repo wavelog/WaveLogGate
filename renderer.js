@@ -116,6 +116,11 @@ $(document).ready(function() {
 		obj.ani=false;
 		resizeme(obj);
 	});
+
+	ipcRenderer.on('get_info', (event, arg) => {
+		const result = getInfo(arg);
+		ipcRenderer.send('get_info_result', result);
+	}
 });
 
 async function load_config() {
@@ -196,10 +201,23 @@ async function getInfo(which) {
 				}
 			);
 			const data = await response.text();
-			var parser = new DOMParser();
-			var xmlDoc = parser.parseFromString(data, "text/xml");
-			var qrgplain = xmlDoc.getElementsByTagName("value")[0].textContent;
-			return qrgplain;
+			const parser = new DOMParser();
+			const xmlDoc = parser.parseFromString(data, "application/xml");
+
+			const valueNode = xmlDoc.querySelector("methodResponse > params > param > value");
+
+			if (!valueNode) {
+				return null;
+			}
+
+			const arrayNode = valueNode.querySelector("array > data");
+			if (arrayNode) {
+				const items = Array.from(arrayNode.querySelectorAll("value string, value"))
+				.map(node => node.textContent.trim());
+				return items;
+			} else {
+				return valueNode.textContent.trim();
+			}
 		} catch (e) {
 			return '';
 		}
