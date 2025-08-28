@@ -252,7 +252,7 @@ if (!gotTheLock) {
 			s_mainWindow.hide();
 		}
 	});
-	if (process.platform === 'darwin') {
+	if (app.isPackaged && (process.platform === 'darwin')) {
 		app.dock.hide();
 	}
 	})
@@ -515,20 +515,52 @@ function startserver() {
 	}
 }
 
+
 async function get_modes() {
-	s_mainWindow.webContents.send('get_info','rig.get_modes');
+	return new Promise((resolve) => {
+		ipcMain.once('get_info_result', (event, modes) => {
+			resolve(modes);
+		});
+		s_mainWindow.webContents.send('get_info', 'rig.get_modes');
+	});
 }
+
+function getClosestMode(requestedMode, availableModes) {
+	if (availableModes.includes(requestedMode)) {	// Check perfect matches
+		return requestedMode;
+	}
+
+	const modeFallbacks = {
+		'CW': ['CW-L', 'CW-R', 'CW', 'LSB', 'USB'],
+		'RTTY': ['RTTY', 'RTTY-R'],
+	};
+
+	if (modeFallbacks[requestedMode]) {
+		for (let variant of modeFallbacks[requestedMode]) {
+			if (availableModes.includes(variant)) {
+				return variant;
+			}
+		}
+	}
+
+	const found = availableModes.find(mode =>
+					  mode.toUpperCase().startsWith(requestedMode.toUpperCase())
+					 );
+					 if (found) return found;
+					 return null;
+}
+
 async function settrx(qrg, mode = '') {
 	let avail_modes={};
 	try {
 		avail_modes=await get_modes();
 	} catch(e) {
-		avail_modes={};
-	}
+		avail_modes=[];
+	} 
 	let to={};
 	to.qrg=qrg;
 	if (mode == 'cw') {
-		to.mode='CW';
+		to.mode=getClosestMode(mode,avail_modes);
 	} else {
 		if ((to.qrg) < 7999000) {
 			to.mode='LSB';

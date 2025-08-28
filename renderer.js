@@ -117,10 +117,10 @@ $(document).ready(function() {
 		resizeme(obj);
 	});
 
-	ipcRenderer.on('get_info', (event, arg) => {
-		const result = getInfo(arg);
+	ipcRenderer.on('get_info', async (event, arg) => {
+		const result = await getInfo(arg); 
 		ipcRenderer.send('get_info_result', result);
-	}
+	});
 });
 
 async function load_config() {
