@@ -22,6 +22,7 @@ const input_key=select("#wavelog_key");
 const input_url=select("#wavelog_url");
 
 var oldCat={ vfo: 0, mode: "SSB" };
+var lastCat=0;
 
 $(document).ready(function() {
 
@@ -179,7 +180,7 @@ async function get_trx() {
 	currentCat.modeB=await getInfo('rig.get_modeB');
 
 	$("#current_trx").html((currentCat.vfo/(1000*1000))+" MHz / "+currentCat.mode);
-	if (!(isDeepEqual(oldCat,currentCat))) {
+	if (((Date.now()-lastCat) > (30*60*1000)) || (!(isDeepEqual(oldCat,currentCat)))) {
 		console.log(await informWavelog(currentCat));
 	}
 	oldCat=currentCat;
@@ -286,6 +287,7 @@ const isObject = (object) => {
 };
 
 async function informWavelog(CAT) {
+	lastCat=Date.now();
 	let data = {
 		radio: "WLGate",
 		key: cfg.profiles[active_cfg].wavelog_key,
