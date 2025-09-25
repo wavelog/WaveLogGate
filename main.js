@@ -1,4 +1,4 @@
-const {app, BrowserWindow, globalShortcut, powerSaveBlocker } = require('electron/main');
+const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker } = require('electron/main');
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
@@ -144,14 +144,18 @@ ipcMain.on("quit", async (event,arg) => {
 });
 
 function show_noti(arg) {
-	try {
-		const notification = new Notification({
-			title: 'Wavelog',
-			body: arg
-		});
-		notification.show();
-	} catch(e) {
-		console.log("No notification possible on this system / ignoring");
+	if (Notification.isSupported()) {
+		try {
+			const notification = new Notification({
+				title: 'Wavelog',
+				body: arg
+			});
+			notification.show();
+		} catch(e) {
+			console.log("No notification possible on this system / ignoring");
+		}
+	} else {
+		console.log("Notifications are not supported on this platform");
 	}
 }
 
