@@ -1,4 +1,4 @@
-const {app, BrowserWindow, Tray, Notification, Menu, globalShortcut, powerSaveBlocker } = require('electron/main');
+const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker } = require('electron/main');
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
@@ -8,7 +8,6 @@ const net = require('net');
 const gotTheLock = app.requestSingleInstanceLock();
 
 let powerSaveBlockerId;
-let tray;
 let s_mainWindow;
 let msgbacklog=[];
 let httpServer;
@@ -145,14 +144,18 @@ ipcMain.on("quit", async (event,arg) => {
 });
 
 function show_noti(arg) {
-	try {
-		const notification = new Notification({
-			title: 'Wavelog',
-			body: arg
-		});
-		notification.show();
-	} catch(e) {
-		console.log("No notification possible on this system / ignoring");
+	if (Notification.isSupported()) {
+		try {
+			const notification = new Notification({
+				title: 'Wavelog',
+				body: arg
+			});
+			notification.show();
+		} catch(e) {
+			console.log("No notification possible on this system / ignoring");
+		}
+	} else {
+		console.log("Notifications are not supported on this platform");
 	}
 }
 
@@ -185,9 +188,6 @@ app.on('before-quit', () => {
     if (httpServer) {
         httpServer.close();
     }
-    if (tray) {
-        tray.destroy();
-    }
 });
 
 process.on('SIGINT', () => {
@@ -217,45 +217,12 @@ if (!gotTheLock) {
 		app.on('activate', function () {
 			if (BrowserWindow.getAllWindows().length === 0) createWindow()
 		});
-	s_mainWindow.webContents.once('dom-ready', function() {
-		if (msgbacklog.length>0) {
-			s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
-		}
+		s_mainWindow.webContents.once('dom-ready', function() {
+			if (msgbacklog.length>0) {
+				s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
+			}
+		});
 	});
-
-	// Create the tray icon
-	const path = require('path');
-	const iconPath = path.join(__dirname, 'icon1616.png');
-	tray = new Tray(iconPath);
-
-	const contextMenu = Menu.buildFromTemplate([
-		{ label: 'Show App', click: () => s_mainWindow.show() },
-			{ label: 'Quit', click: () => {
-			console.log("Exiting");
-			app.isQuitting = true;
-			app.quit();
-		}
-		},
-	]);
-
-	tray.setContextMenu(contextMenu);
-	tray.setToolTip(require('./package.json').name + " V" + require('./package.json').version);
-
-	s_mainWindow.on('minimize', (event) => {
-		event.preventDefault();
-		s_mainWindow.hide(); // Hides the window instead of minimizing it to the taskbar
-	});
-
-	s_mainWindow.on('close', (event) => {
-		if (!app.isQuitting) {
-			event.preventDefault();
-			s_mainWindow.hide();
-		}
-	});
-	if (app.isPackaged && (process.platform === 'darwin')) {
-		app.dock.hide();
-	}
-	})
 }
 
 app.on('window-all-closed', function () {
