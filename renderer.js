@@ -65,7 +65,7 @@ $(document).ready(function() {
 	});
 
 	bt_quit.addEventListener('click', () => {
-		x=ipcRenderer.sendSync("quit", '');
+		const x=ipcRenderer.sendSync("quit", '');
 	});
 
 	bt_test.addEventListener('click', () => {
@@ -253,7 +253,7 @@ async function getInfo(which) {
 async function getsettrx() {
 	if ($("#flrig_ena").is(':checked') || cfg.profiles[active_cfg].hamlib_ena) {
 		console.log('Polling TRX '+trxpoll);
-		const x=get_trx();
+		const x=await get_trx();
 	}
 	trxpoll = setTimeout(() => {
 		getsettrx();
@@ -289,9 +289,8 @@ const isObject = (object) => {
 async function informWavelog(CAT) {
 	lastCat=Date.now();
 	let data = {
-		radio: "WLGate",
+		radio: cfg.profiles[active_cfg].wavelog_radioname || "WLGate",
 		key: cfg.profiles[active_cfg].wavelog_key,
-		radio: cfg.profiles[active_cfg].wavelog_radioname
 	};
 	if (CAT.power !== undefined && CAT.power !== 0) {
 		data.power = CAT.power;

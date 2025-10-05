@@ -21,7 +21,7 @@ $(document).ready(function() {
 
         if ($("#hamlib_ena").is(':checked') && cfg.profiles[cfg.profile].flrig_ena){cfg.profiles[cfg.profile].flrig_ena = false;}
 
-        x=ipcRenderer.sendSync("set_config", cfg);
+        const x=ipcRenderer.sendSync("set_config", cfg);
         // console.log(x);
 
     });

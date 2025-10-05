@@ -105,7 +105,7 @@ ipcMain.on("set_config", async (event,arg) => {
 });
 
 ipcMain.on("resize", async (event,arg) => {
-	newsize=arg;
+	const newsize=arg;
 	s_mainWindow.setContentSize(newsize.width,newsize.height,newsize.ani);
 	s_mainWindow.setSize(newsize.width,newsize.height,newsize.ani);
 	event.returnValue=true;
@@ -562,7 +562,7 @@ async function settrx(qrg, mode = '') {
 		}
 	}
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_ena) {
-		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_port }, () => {
+		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_port }, () => {
 			client.write("F " + to.qrg + "\n");
 			if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 				client.write("M " + to.mode + "\n-1");
