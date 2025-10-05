@@ -327,7 +327,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 			const body = [];
 			res.on('data', (chunk) => body.push(chunk));
 			res.on('end', () => {
-				const resString = Buffer.concat(body).toString();
+				let resString = Buffer.concat(body).toString();
 				if (rej) {
 					if (resString.indexOf('html>')>0) {
 						resString='{"status":"failed","reason":"wrong URL"}';
