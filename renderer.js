@@ -7,9 +7,9 @@
 
 
 // Shorthand for document.querySelector.
-var cfg={};
-var active_cfg=0;
-var trxpoll=undefined;
+let cfg={};
+let active_cfg=0;
+let trxpoll=undefined;
 
 const {ipcRenderer} = require('electron')
 const net = require('net');
@@ -21,8 +21,8 @@ const bt_test=select("#test");
 const input_key=select("#wavelog_key");
 const input_url=select("#wavelog_url");
 
-var oldCat={ vfo: 0, mode: "SSB" };
-var lastCat=0;
+let oldCat={ vfo: 0, mode: "SSB" };
+let lastCat=0;
 
 $(document).ready(function() {
 
@@ -73,7 +73,7 @@ $(document).ready(function() {
 		cfg.profiles[active_cfg].wavelog_key=$("#wavelog_key").val().trim();
 		cfg.profiles[active_cfg].wavelog_id=$("#wavelog_id").val().trim();
 		cfg.profiles[active_cfg].wavelog_radioname=$("#wavelog_radioname").val().trim();
-		x=(ipcRenderer.sendSync("test", cfg.profiles[active_cfg]));
+		const x=(ipcRenderer.sendSync("test", cfg.profiles[active_cfg]));
 		if (x.payload.status == 'created') {
 			$("#test").removeClass('btn-primary');
 			$("#test").removeClass('btn-danger');
@@ -103,7 +103,7 @@ $(document).ready(function() {
 	window.onload = updateUtcTime;
 
 	$("#config-tab").on("click",function() {
-		obj={};
+		const obj={};
 		obj.width=430;
 		obj.height=550;
 		obj.ani=false;
@@ -111,7 +111,7 @@ $(document).ready(function() {
 	});
 
 	$("#status-tab").on("click",function() {
-		obj={};
+		const obj={};
 		obj.width=430;
 		obj.height=250;
 		obj.ani=false;
@@ -253,7 +253,7 @@ async function getInfo(which) {
 async function getsettrx() {
 	if ($("#flrig_ena").is(':checked') || cfg.profiles[active_cfg].hamlib_ena) {
 		console.log('Polling TRX '+trxpoll);
-		x=get_trx();
+		const x=get_trx();
 	}
 	trxpoll = setTimeout(() => {
 		getsettrx();
@@ -267,7 +267,7 @@ const isDeepEqual = (object1, object2) => {
 
 	if (objKeys1.length !== objKeys2.length) return false;
 
-	for (var key of objKeys1) {
+	for (const key of objKeys1) {
 		const value1 = object1[key];
 		const value2 = object2[key];
 
@@ -335,11 +335,11 @@ function updateUtcTime() {
 }
 
 async function getStations() {
-	let select = $('#wavelog_id');
+	const select = $('#wavelog_id');
 	select.empty();
 	select.prop('disabled', true);
 	try {
-		let x = await fetch($('#wavelog_url').val().trim() + '/api/station_info/' + $('#wavelog_key').val().trim(), {
+		const x = await fetch($('#wavelog_url').val().trim() + '/api/station_info/' + $('#wavelog_key').val().trim(), {
 			method: 'GET',
 			rejectUnauthorized: false,
 			headers: {
@@ -352,7 +352,7 @@ async function getStations() {
 			throw new Error(`HTTP error! Status: ${x.status}`);
 		}
 
-		let data = await x.json();
+		const data = await x.json();
 		fillDropdown(data);
 
 	} catch (error) {
@@ -362,13 +362,13 @@ async function getStations() {
 }
 
 function fillDropdown(data) {
-	let select = $('#wavelog_id');
+	const select = $('#wavelog_id');
 	select.empty();
 	select.prop('disabled', false);
 
 	data.forEach(function(station) {
-		let optionText = station.station_profile_name + " (" + station.station_callsign + ", ID: " + station.station_id + ")";
-		let optionValue = station.station_id;
+		const optionText = station.station_profile_name + " (" + station.station_callsign + ", ID: " + station.station_id + ")";
+		const optionValue = station.station_id;
 		select.append(new Option(optionText, optionValue));
 	});
 

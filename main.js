@@ -17,10 +17,10 @@ const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rs
 
 if (require('electron-squirrel-startup')) app.quit();
 
-var udp = require('dgram');
+const udp = require('dgram');
 
-var q={};
-var defaultcfg = {
+let q={};
+let defaultcfg = {
 	wavelog_url: "https://log.jo30.de/index.php",
 	wavelog_key: "mykey",
 	wavelog_id: "0",
@@ -112,8 +112,8 @@ ipcMain.on("resize", async (event,arg) => {
 });
 
 ipcMain.on("get_config", async (event, arg) => {
-	var storedcfg = storage.getSync('basic');
-	var realcfg={};
+	let storedcfg = storage.getSync('basic');
+	let realcfg={};
 	if (!(storedcfg.wavelog_url) && !(storedcfg.profiles)) { storedcfg=defaultcfg; }	// Old config not present, add default-cfg
 	if (!(storedcfg.profiles)) {	// Old Config without array? Convert it
 		(realcfg.profiles = realcfg.profiles || []).push(storedcfg);
@@ -295,13 +295,13 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 	clpayload.station_profile_id=o_cfg.wavelog_id.trim();
 	clpayload.type='adif';
 	clpayload.string=adif;
-	postData=JSON.stringify(clpayload);
+	const postData=JSON.stringify(clpayload);
 	let httpmod='http';
 	if (o_cfg.wavelog_url.toLowerCase().startsWith('https')) {
 		httpmod='https';
 	}
 	const https = require(httpmod);
-	var options = {
+	const options = {
 		method: 'POST',
 		timeout: 5000,
 		rejectUnauthorized: false,
@@ -313,7 +313,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 	};
 
 	return new Promise((resolve, reject) => {
-		rej=false;
+		let rej=false;
 		let result={};
 		let url=o_cfg.wavelog_url + '/api/qso';
 		if (dryrun) { url+='/true'; }
@@ -327,7 +327,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 			const body = [];
 			res.on('data', (chunk) => body.push(chunk));
 			res.on('end', () => {
-				var resString = Buffer.concat(body).toString();
+				const resString = Buffer.concat(body).toString();
 				if (rej) {
 					if (resString.indexOf('html>')>0) {
 						resString='{"status":"failed","reason":"wrong URL"}';
@@ -370,15 +370,15 @@ ports.forEach(port => {
 	});
 
 	WServer.on('message',async function(msg,info){
-		parsedXML={};
-		adobject={};
+		let parsedXML={};
+		let adobject={};
 		if (msg.toString().includes("xml")) {	// detect if incoming String is XML
 			try {
 				xml.parseString(msg.toString(), function (err,dat) {
 					parsedXML=dat;
 				});
 				let qsodatum = new Date(Date.parse(parsedXML.contactinfo.timestamp[0]+"Z")); // Added Z to make it UTC
-				qsodat=fmt(qsodatum);
+				const qsodat=fmt(qsodatum);
 				if (parsedXML.contactinfo.mode[0] == 'USB' || parsedXML.contactinfo.mode[0] == 'LSB') {	 // TCADIF lib is not capable of using USB/LSB
 					parsedXML.contactinfo.mode[0]='SSB';
 				}
@@ -414,11 +414,11 @@ ports.forEach(port => {
 				return;
 			}
 		}
-		var plainret='';
+		let plainret='';
 		if (adobject.qsos.length>0) {
 			let x={};
 			try {
-				outadif=writeADIF(adobject);
+				const outadif=writeADIF(adobject);
 				plainret=await send2wavelog(defaultcfg.profiles[defaultcfg.profile ?? 0],outadif.stringify());
 				x.state=plainret.statusCode;
 				x.payload = JSON.parse(plainret.resString); 
@@ -470,9 +470,9 @@ function startserver() {
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.writeHead(200, {'Content-Type': 'text/plain'});
 			res.end('');
-			let parts = req.url.substr(1).split('/'); 
-			let qrg = parts[0]; 
-			let mode = parts[1] || '';
+			const parts = req.url.substr(1).split('/');
+			const qrg = parts[0];
+			const mode = parts[1] || '';
 			if (Number.isInteger(Number.parseInt(qrg))) {
 				settrx(qrg,mode);
 			}
@@ -523,7 +523,7 @@ async function settrx(qrg, mode = '') {
 		avail_modes=await get_modes();
 	} catch(e) {
 		avail_modes=[];
-	} 
+	}
 	let to={};
 	to.qrg=qrg;
 	if (mode == 'cw') {
@@ -536,9 +536,9 @@ async function settrx(qrg, mode = '') {
 		}
 	}
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_ena) {
-		postData= '<?xml version="1.0"?>';
+		let postData= '<?xml version="1.0"?>';
 		postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
-		var options = {
+		let options = {
 			method: 'POST',
 			headers: {
 				'User-Agent': 'SW2WL_v' + app.getVersion(),
@@ -546,12 +546,12 @@ async function settrx(qrg, mode = '') {
 			}
 		};
 		let url="http://"+defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_host+':'+defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_port+'/';
-		x=await httpPost(url,options,postData);
+		let x=await httpPost(url,options,postData);
 
 		if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 			postData= '<?xml version="1.0"?>';
 			postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
-			var options = {
+			options = {
 				method: 'POST',
 				headers: {
 					'User-Agent': 'SW2WL_v' + app.getVersion(),
@@ -579,13 +579,13 @@ async function settrx(qrg, mode = '') {
 
 function httpPost(url,options,postData) {
 	return new Promise((resolve, reject) => {
-		rej=false;
+		let rej=false;
 		let result={};
 		const req = http.request(url,options, (res) => {
 			let body=[];
 			res.on('data', (chunk) => body.push(chunk));
 			res.on('end', () => {
-				var resString = Buffer.concat(body).toString();
+				const resString = Buffer.concat(body).toString();
 				if (rej) {
 					reject(resString);
 				} else {
@@ -612,13 +612,13 @@ function httpPost(url,options,postData) {
 }
 
 function fmt(spotDate) {
-	retstr={};
-	d=spotDate.getUTCDate().toString();
-	y=spotDate.getUTCFullYear().toString();
-	m=(1+spotDate.getUTCMonth()).toString();
-	h=spotDate.getUTCHours().toString();
-	i=spotDate.getUTCMinutes().toString();
-	s=spotDate.getUTCSeconds().toString();
+	const retstr={};
+	const d=spotDate.getUTCDate().toString();
+	const y=spotDate.getUTCFullYear().toString();
+	const m=(1+spotDate.getUTCMonth()).toString();
+	const h=spotDate.getUTCHours().toString();
+	const i=spotDate.getUTCMinutes().toString();
+	const s=spotDate.getUTCSeconds().toString();
 	retstr.d=y.padStart(4,'0')+m.padStart(2,'0')+d.padStart(2,'0');
 	retstr.t=h.padStart(2,'0')+i.padStart(2,'0')+s.padStart(2,'0');
 	return retstr;

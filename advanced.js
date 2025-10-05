@@ -1,6 +1,6 @@
 const {ipcRenderer} = require('electron');
 
-var cfg = {};
+let cfg = {};
 
 const bt_save=document.querySelector("#save");
 
