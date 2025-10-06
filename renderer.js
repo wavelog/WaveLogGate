@@ -253,7 +253,7 @@ async function getInfo(which) {
 async function getsettrx() {
 	if ($("#flrig_ena").is(':checked') || cfg.profiles[active_cfg].hamlib_ena) {
 		console.log('Polling TRX '+trxpoll);
-		const x=await get_trx();
+		const x=get_trx();
 	}
 	trxpoll = setTimeout(() => {
 		getsettrx();
