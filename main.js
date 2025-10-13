@@ -1,4 +1,4 @@
-const {app, BrowserWindow, Tray, Notification, Menu, globalShortcut, powerSaveBlocker } = require('electron/main');
+const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker } = require('electron/main');
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
@@ -8,7 +8,6 @@ const net = require('net');
 const gotTheLock = app.requestSingleInstanceLock();
 
 let powerSaveBlockerId;
-let tray;
 let s_mainWindow;
 let msgbacklog=[];
 let httpServer;
@@ -18,10 +17,10 @@ const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rs
 
 if (require('electron-squirrel-startup')) app.quit();
 
-var udp = require('dgram');
+const udp = require('dgram');
 
-var q={};
-var defaultcfg = {
+let q={};
+let defaultcfg = {
 	wavelog_url: "https://log.jo30.de/index.php",
 	wavelog_key: "mykey",
 	wavelog_id: "0",
@@ -106,15 +105,15 @@ ipcMain.on("set_config", async (event,arg) => {
 });
 
 ipcMain.on("resize", async (event,arg) => {
-	newsize=arg;
+	const newsize=arg;
 	s_mainWindow.setContentSize(newsize.width,newsize.height,newsize.ani);
 	s_mainWindow.setSize(newsize.width,newsize.height,newsize.ani);
 	event.returnValue=true;
 });
 
 ipcMain.on("get_config", async (event, arg) => {
-	var storedcfg = storage.getSync('basic');
-	var realcfg={};
+	let storedcfg = storage.getSync('basic');
+	let realcfg={};
 	if (!(storedcfg.wavelog_url) && !(storedcfg.profiles)) { storedcfg=defaultcfg; }	// Old config not present, add default-cfg
 	if (!(storedcfg.profiles)) {	// Old Config without array? Convert it
 		(realcfg.profiles = realcfg.profiles || []).push(storedcfg);
@@ -145,14 +144,18 @@ ipcMain.on("quit", async (event,arg) => {
 });
 
 function show_noti(arg) {
-	try {
-		const notification = new Notification({
-			title: 'Wavelog',
-			body: arg
-		});
-		notification.show();
-	} catch(e) {
-		console.log("No notification possible on this system / ignoring");
+	if (Notification.isSupported()) {
+		try {
+			const notification = new Notification({
+				title: 'Wavelog',
+				body: arg
+			});
+			notification.show();
+		} catch(e) {
+			console.log("No notification possible on this system / ignoring");
+		}
+	} else {
+		console.log("Notifications are not supported on this platform");
 	}
 }
 
@@ -185,9 +188,6 @@ app.on('before-quit', () => {
     if (httpServer) {
         httpServer.close();
     }
-    if (tray) {
-        tray.destroy();
-    }
 });
 
 process.on('SIGINT', () => {
@@ -217,45 +217,12 @@ if (!gotTheLock) {
 		app.on('activate', function () {
 			if (BrowserWindow.getAllWindows().length === 0) createWindow()
 		});
-	s_mainWindow.webContents.once('dom-ready', function() {
-		if (msgbacklog.length>0) {
-			s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
-		}
+		s_mainWindow.webContents.once('dom-ready', function() {
+			if (msgbacklog.length>0) {
+				s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
+			}
+		});
 	});
-
-	// Create the tray icon
-	const path = require('path');
-	const iconPath = path.join(__dirname, 'icon1616.png');
-	tray = new Tray(iconPath);
-
-	const contextMenu = Menu.buildFromTemplate([
-		{ label: 'Show App', click: () => s_mainWindow.show() },
-			{ label: 'Quit', click: () => {
-			console.log("Exiting");
-			app.isQuitting = true;
-			app.quit();
-		}
-		},
-	]);
-
-	tray.setContextMenu(contextMenu);
-	tray.setToolTip(require('./package.json').name + " V" + require('./package.json').version);
-
-	s_mainWindow.on('minimize', (event) => {
-		event.preventDefault();
-		s_mainWindow.hide(); // Hides the window instead of minimizing it to the taskbar
-	});
-
-	s_mainWindow.on('close', (event) => {
-		if (!app.isQuitting) {
-			event.preventDefault();
-			s_mainWindow.hide();
-		}
-	});
-	if (process.platform === 'darwin') {
-		app.dock.hide();
-	}
-	})
 }
 
 app.on('window-all-closed', function () {
@@ -328,13 +295,13 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 	clpayload.station_profile_id=o_cfg.wavelog_id.trim();
 	clpayload.type='adif';
 	clpayload.string=adif;
-	postData=JSON.stringify(clpayload);
+	const postData=JSON.stringify(clpayload);
 	let httpmod='http';
 	if (o_cfg.wavelog_url.toLowerCase().startsWith('https')) {
 		httpmod='https';
 	}
 	const https = require(httpmod);
-	var options = {
+	const options = {
 		method: 'POST',
 		timeout: 5000,
 		rejectUnauthorized: false,
@@ -346,7 +313,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 	};
 
 	return new Promise((resolve, reject) => {
-		rej=false;
+		let rej=false;
 		let result={};
 		let url=o_cfg.wavelog_url + '/api/qso';
 		if (dryrun) { url+='/true'; }
@@ -360,7 +327,7 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 			const body = [];
 			res.on('data', (chunk) => body.push(chunk));
 			res.on('end', () => {
-				var resString = Buffer.concat(body).toString();
+				let resString = Buffer.concat(body).toString();
 				if (rej) {
 					if (resString.indexOf('html>')>0) {
 						resString='{"status":"failed","reason":"wrong URL"}';
@@ -403,15 +370,15 @@ ports.forEach(port => {
 	});
 
 	WServer.on('message',async function(msg,info){
-		parsedXML={};
-		adobject={};
+		let parsedXML={};
+		let adobject={};
 		if (msg.toString().includes("xml")) {	// detect if incoming String is XML
 			try {
 				xml.parseString(msg.toString(), function (err,dat) {
 					parsedXML=dat;
 				});
 				let qsodatum = new Date(Date.parse(parsedXML.contactinfo.timestamp[0]+"Z")); // Added Z to make it UTC
-				qsodat=fmt(qsodatum);
+				const qsodat=fmt(qsodatum);
 				if (parsedXML.contactinfo.mode[0] == 'USB' || parsedXML.contactinfo.mode[0] == 'LSB') {	 // TCADIF lib is not capable of using USB/LSB
 					parsedXML.contactinfo.mode[0]='SSB';
 				}
@@ -447,11 +414,11 @@ ports.forEach(port => {
 				return;
 			}
 		}
-		var plainret='';
+		let plainret='';
 		if (adobject.qsos.length>0) {
 			let x={};
 			try {
-				outadif=writeADIF(adobject);
+				const outadif=writeADIF(adobject);
 				plainret=await send2wavelog(defaultcfg.profiles[defaultcfg.profile ?? 0],outadif.stringify());
 				x.state=plainret.statusCode;
 				x.payload = JSON.parse(plainret.resString); 
@@ -503,9 +470,9 @@ function startserver() {
 			res.setHeader('Access-Control-Allow-Origin', '*');
 			res.writeHead(200, {'Content-Type': 'text/plain'});
 			res.end('');
-			let parts = req.url.substr(1).split('/'); 
-			let qrg = parts[0]; 
-			let mode = parts[1] || '';
+			const parts = req.url.substr(1).split('/');
+			const qrg = parts[0];
+			const mode = parts[1] || '';
 			if (Number.isInteger(Number.parseInt(qrg))) {
 				settrx(qrg,mode);
 			}
@@ -515,11 +482,52 @@ function startserver() {
 	}
 }
 
+
+async function get_modes() {
+	return new Promise((resolve) => {
+		ipcMain.once('get_info_result', (event, modes) => {
+			resolve(modes);
+		});
+		s_mainWindow.webContents.send('get_info', 'rig.get_modes');
+	});
+}
+
+function getClosestMode(requestedMode, availableModes) {
+	if (availableModes.includes(requestedMode)) {	// Check perfect matches
+		return requestedMode;
+	}
+
+	const modeFallbacks = {
+		'CW': ['CW-L', 'CW-R', 'CW', 'LSB', 'USB'],
+		'RTTY': ['RTTY', 'RTTY-R'],
+	};
+
+	if (modeFallbacks[requestedMode]) {
+		for (let variant of modeFallbacks[requestedMode]) {
+			if (availableModes.includes(variant)) {
+				return variant;
+			}
+		}
+	}
+
+	const found = availableModes.find(mode =>
+					  mode.toUpperCase().startsWith(requestedMode.toUpperCase())
+					 );
+					 if (found) return found;
+					 return null;
+}
+
 async function settrx(qrg, mode = '') {
+	let avail_modes={};
+	try {
+		avail_modes=await get_modes();
+	} catch(e) {
+		avail_modes=[];
+	}
 	let to={};
 	to.qrg=qrg;
 	if (mode == 'cw') {
-		to.mode='CW';
+		to.mode=getClosestMode(mode,avail_modes);
 	} else {
 		if ((to.qrg) < 7999000) {
 			to.mode='LSB';
@@ -528,9 +536,9 @@ async function settrx(qrg, mode = '') {
 		}
 	}
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_ena) {
-		postData= '<?xml version="1.0"?>';
+		let postData= '<?xml version="1.0"?>';
 		postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
-		var options = {
+		let options = {
 			method: 'POST',
 			headers: {
 				'User-Agent': 'SW2WL_v' + app.getVersion(),
@@ -538,12 +546,12 @@ async function settrx(qrg, mode = '') {
 			}
 		};
 		let url="http://"+defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_host+':'+defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_port+'/';
-		x=await httpPost(url,options,postData);
+		let x=await httpPost(url,options,postData);
 
 		if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 			postData= '<?xml version="1.0"?>';
 			postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
-			var options = {
+			options = {
 				method: 'POST',
 				headers: {
 					'User-Agent': 'SW2WL_v' + app.getVersion(),
@@ -554,7 +562,7 @@ async function settrx(qrg, mode = '') {
 		}
 	}
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_ena) {
-		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_port }, () => {
+		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_port }, () => {
 			client.write("F " + to.qrg + "\n");
 			if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 				client.write("M " + to.mode + "\n-1");
@@ -571,13 +579,13 @@ async function settrx(qrg, mode = '') {
 
 function httpPost(url,options,postData) {
 	return new Promise((resolve, reject) => {
-		rej=false;
+		let rej=false;
 		let result={};
 		const req = http.request(url,options, (res) => {
 			let body=[];
 			res.on('data', (chunk) => body.push(chunk));
 			res.on('end', () => {
-				var resString = Buffer.concat(body).toString();
+				const resString = Buffer.concat(body).toString();
 				if (rej) {
 					reject(resString);
 				} else {
@@ -604,13 +612,13 @@ function httpPost(url,options,postData) {
 }
 
 function fmt(spotDate) {
-	retstr={};
-	d=spotDate.getUTCDate().toString();
-	y=spotDate.getUTCFullYear().toString();
-	m=(1+spotDate.getUTCMonth()).toString();
-	h=spotDate.getUTCHours().toString();
-	i=spotDate.getUTCMinutes().toString();
-	s=spotDate.getUTCSeconds().toString();
+	const retstr={};
+	const d=spotDate.getUTCDate().toString();
+	const y=spotDate.getUTCFullYear().toString();
+	const m=(1+spotDate.getUTCMonth()).toString();
+	const h=spotDate.getUTCHours().toString();
+	const i=spotDate.getUTCMinutes().toString();
+	const s=spotDate.getUTCSeconds().toString();
 	retstr.d=y.padStart(4,'0')+m.padStart(2,'0')+d.padStart(2,'0');
 	retstr.t=h.padStart(2,'0')+i.padStart(2,'0')+s.padStart(2,'0');
 	return retstr;

@@ -1,6 +1,6 @@
 const {ipcRenderer} = require('electron');
 
-var cfg = {};
+let cfg = {};
 
 const bt_save=document.querySelector("#save");
 
@@ -21,7 +21,7 @@ $(document).ready(function() {
 
         if ($("#hamlib_ena").is(':checked') && cfg.profiles[cfg.profile].flrig_ena){cfg.profiles[cfg.profile].flrig_ena = false;}
 
-        x=ipcRenderer.sendSync("set_config", cfg);
+        const x=ipcRenderer.sendSync("set_config", cfg);
         // console.log(x);
 
     });
