@@ -4,7 +4,7 @@
   "description": "Gateway for connecting WSJT-* and FLRig to Wavelog",
   "keywords": [],
   "main": "./main.js",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "author": "DJ7NT",
   "scripts": {
     "start": "electron-forge start",
@@ -14,7 +14,7 @@
     "make": "electron-forge make"
   },
   "dependencies": {
-    "@electron-forge/maker-dmg": "^7.8.1",
+    "@electron-forge/maker-dmg": "^7.10.2",
     "bootstrap": "^4.6.2",
     "dgram": "^1.0.1",
     "electron-json-config": "^2.1.0",
@@ -22,18 +22,18 @@
     "electron-squirrel-startup": "^1.0.1",
     "jquery": "^3.7.1",
     "popper.js": "^1.16.1",
-    "tcadif": "^2.2.0",
+    "tcadif": "^2.3.0",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.8.1",
-    "@electron-forge/maker-deb": "^7.8.1",
-    "@electron-forge/maker-rpm": "^7.8.1",
-    "@electron-forge/maker-squirrel": "^7.8.1",
-    "@electron-forge/maker-zip": "^7.8.1",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
-    "@electron-forge/publisher-github": "^7.8.1",
-    "electron": "^35.7.0",
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
+    "@electron-forge/publisher-github": "^7.10.2",
+    "electron": "^35.7.5",
     "electron-rebuild": "^3.2.9"
   }
 }
