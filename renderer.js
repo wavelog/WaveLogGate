@@ -182,7 +182,12 @@ async function get_trx() {
 	$("#current_trx").html((currentCat.vfo/(1000*1000))+" MHz / "+currentCat.mode);
 	if (((Date.now()-lastCat) > (30*60*1000)) || (!(isDeepEqual(oldCat,currentCat)))) {
 		console.log(await informWavelog(currentCat));
+		const { ipcRenderer } = require('electron');
+		ipcRenderer.send('radio_status_update', currentCat);
 	}
+
+	// Send radio status to main process for WebSocket broadcasting
+
 	oldCat=currentCat;
 	return currentCat;
 }
