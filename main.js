@@ -12,6 +12,7 @@ let powerSaveBlockerId;
 let s_mainWindow;
 let msgbacklog=[];
 let httpServer;
+let currentCAT=null;
 var WServer;
 let wsServer;
 let wsClients = new Set();
@@ -518,6 +519,7 @@ function startWebSocketServer() {
 				type: 'welcome',
 				message: 'Connected to WaveLogGate WebSocket server'
 			}));
+			broadcastRadioStatus(currentCAT);
 		});
 
 		wsServer.on('error', (error) => {
@@ -530,6 +532,7 @@ function startWebSocketServer() {
 }
 
 function broadcastRadioStatus(radioData) {
+	currentCAT=radioData;
 	let message = {
 		type: 'radio_status',
 		frequency: radioData.frequency ? parseInt(radioData.frequency) : null,
@@ -538,7 +541,6 @@ function broadcastRadioStatus(radioData) {
 		radio: radioData.radio || 'wlstream',
 		timestamp: Date.now()
 	};
-
 	// Only include frequency_rx if it's not null
 	if (radioData.frequency_rx) {
 		message.frequency_rx = parseInt(radioData.frequency_rx);
