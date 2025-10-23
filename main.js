@@ -529,34 +529,20 @@ function startWebSocketServer() {
 	}
 }
 
-function broadcastFrequencyMode(frequency, mode, source = 'unknown') {
-	const message = {
-		type: 'frequency_mode_change',
-		frequency: parseInt(frequency),
-		mode: mode,
-		source: source,
-		timestamp: Date.now()
-	};
-
-	const messageStr = JSON.stringify(message);
-	wsClients.forEach((client) => {
-		if (client.readyState === WebSocket.OPEN) {
-			client.send(messageStr);
-		}
-	});
-}
-
 function broadcastRadioStatus(radioData) {
-	const message = {
+	let message = {
 		type: 'radio_status',
-		frequency: radioData.vfo ? parseInt(radioData.vfo) : null,
+		frequency: radioData.frequency ? parseInt(radioData.frequency) : null,
 		mode: radioData.mode || null,
 		power: radioData.power || null,
-		split: radioData.split || false,
-		vfoB: radioData.vfoB ? parseInt(radioData.vfoB) : null,
-		modeB: radioData.modeB || null,
+		radio: radioData.radio || 'wlstream',
 		timestamp: Date.now()
 	};
+
+	// Only include frequency_rx if it's not null
+	if (radioData.frequency_rx) {
+		message.frequency_rx = parseInt(radioData.frequency_rx);
+	}
 
 	const messageStr = JSON.stringify(message);
 	wsClients.forEach((client) => {
@@ -659,7 +645,6 @@ async function settrx(qrg, mode = '') {
 	}
 
 	// Broadcast frequency/mode change to WebSocket clients
-	broadcastFrequencyMode(to.qrg, to.mode, 'wavelog');
 
 	return true;
 }
