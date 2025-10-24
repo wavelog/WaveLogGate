@@ -497,16 +497,14 @@ function startserver() {
 
 function startWebSocketServer() {
 	try {
-		wsServer = new WebSocket.Server({ port: 54322 });
-		tomsg('WebSocket server started on port 54322');
+		wsServer = new WebSocket.Server({ port: 54322, exclusive: true });
 
 		wsServer.on('connection', (ws) => {
 			wsClients.add(ws);
-			tomsg('WebSocket client connected');
+			console.log('WebSocket client connected');
 
 			ws.on('close', () => {
 				wsClients.delete(ws);
-				tomsg('WebSocket client disconnected');
 			});
 
 			ws.on('error', (error) => {
@@ -527,7 +525,7 @@ function startWebSocketServer() {
 		});
 
 	} catch(e) {
-		tomsg('Failed to start WebSocket server on port 54322: ' + e.message);
+		console.error('WebSocket server startup error:', e);
 	}
 }
 
