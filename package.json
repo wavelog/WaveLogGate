@@ -23,6 +23,7 @@
     "jquery": "^3.7.1",
     "popper.js": "^1.16.1",
     "tcadif": "^2.3.0",
+    "ws": "^8.18.3",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {

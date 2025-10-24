@@ -4,6 +4,7 @@ const {ipcMain} = require('electron')
 const http = require('http');
 const xml = require("xml2js");
 const net = require('net');
+const WebSocket = require('ws');
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -11,7 +12,10 @@ let powerSaveBlockerId;
 let s_mainWindow;
 let msgbacklog=[];
 let httpServer;
+let currentCAT=null;
 var WServer;
+let wsServer;
+let wsClients = new Set();
 
 const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rst_rcvd:2>33 <qso_date:8>20240110 <time_on:6>051855 <qso_date_off:8>20240110 <time_off:6>051855 <band:3>40m <freq:8>7.155783 <station_callsign:5>TE1ST <my_gridsquare:6>JO30OO <eor>';
 
@@ -140,6 +144,12 @@ ipcMain.on("setCAT", async (event,arg) => {
 ipcMain.on("quit", async (event,arg) => {
 	app.isQuitting = true;
 	app.quit();
+	event.returnValue=true;
+});
+
+ipcMain.on("radio_status_update", async (event,arg) => {
+	// Broadcast radio status updates from renderer to WebSocket clients
+	broadcastRadioStatus(arg);
 	event.returnValue=true;
 });
 
@@ -477,9 +487,71 @@ function startserver() {
 				settrx(qrg,mode);
 			}
 		}).listen(54321);
+
+		// Start WebSocket server
+		startWebSocketServer();
 	} catch(e) {
 		tomsg('Some other Tool blocks Port 2333 or 54321. Stop it, and restart this');
 	}
+}
+
+function startWebSocketServer() {
+	try {
+		wsServer = new WebSocket.Server({ port: 54322 });
+		tomsg('WebSocket server started on port 54322');
+
+		wsServer.on('connection', (ws) => {
+			wsClients.add(ws);
+			tomsg('WebSocket client connected');
+
+			ws.on('close', () => {
+				wsClients.delete(ws);
+				tomsg('WebSocket client disconnected');
+			});
+
+			ws.on('error', (error) => {
+				console.error('WebSocket error:', error);
+				wsClients.delete(ws);
+			});
+
+			// Send current radio status on connection
+			ws.send(JSON.stringify({
+				type: 'welcome',
+				message: 'Connected to WaveLogGate WebSocket server'
+			}));
+			broadcastRadioStatus(currentCAT);
+		});
+
+		wsServer.on('error', (error) => {
+			console.error('WebSocket server error:', error);
+		});
+
+	} catch(e) {
+		tomsg('Failed to start WebSocket server on port 54322: ' + e.message);
+	}
+}
+
+function broadcastRadioStatus(radioData) {
+	currentCAT=radioData;
+	let message = {
+		type: 'radio_status',
+		frequency: radioData.frequency ? parseInt(radioData.frequency) : null,
+		mode: radioData.mode || null,
+		power: radioData.power || null,
+		radio: radioData.radio || 'wlstream',
+		timestamp: Date.now()
+	};
+	// Only include frequency_rx if it's not null
+	if (radioData.frequency_rx) {
+		message.frequency_rx = parseInt(radioData.frequency_rx);
+	}
+
+	const messageStr = JSON.stringify(message);
+	wsClients.forEach((client) => {
+		if (client.readyState === WebSocket.OPEN) {
+			client.send(messageStr);
+		}
+	});
 }
 
 
@@ -573,6 +645,8 @@ async function settrx(qrg, mode = '') {
 		client.on("error", (err) => {});
 		client.on("close", () => {});
 	}
+
+	// Broadcast frequency/mode change to WebSocket clients
 
 	return true;
 }
