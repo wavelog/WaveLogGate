@@ -4,7 +4,7 @@
   "description": "Gateway for connecting WSJT-* and FLRig to Wavelog",
   "keywords": [],
   "main": "./main.js",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "author": "DJ7NT",
   "scripts": {
     "start": "electron-forge start",

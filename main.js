@@ -606,17 +606,10 @@ async function settrx(qrg, mode = '') {
 		}
 	}
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_ena) {
-		let postData= '<?xml version="1.0"?>';
-		postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
-		let options = {
-			method: 'POST',
-			headers: {
-				'User-Agent': 'SW2WL_v' + app.getVersion(),
-				'Content-Length': postData.length
-			}
-		};
 		let url="http://"+defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_host+':'+defaultcfg.profiles[defaultcfg.profile ?? 0].flrig_port+'/';
-		let x=await httpPost(url,options,postData);
+		let postData='';
+		let options={};
+		let x;
 
 		if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 			postData= '<?xml version="1.0"?>';
@@ -630,7 +623,20 @@ async function settrx(qrg, mode = '') {
 			};
 			x=await httpPost(url,options,postData);
 		}
+
+		postData= '<?xml version="1.0"?>';
+		postData+='<methodCall><methodName>main.set_frequency</methodName><params><param><value><double>' + to.qrg + '</double></value></param></params></methodCall>';
+		options = {
+			method: 'POST',
+			headers: {
+				'User-Agent': 'SW2WL_v' + app.getVersion(),
+				'Content-Length': postData.length
+			}
+		};
+		x=await httpPost(url,options,postData);
+
 	}
+
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_ena) {
 		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_port }, () => {
 			client.write("F " + to.qrg + "\n");
