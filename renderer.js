@@ -50,15 +50,31 @@ $(document).ready(function() {
 		cfg.profiles[cfg.profile].wavelog_key=$("#wavelog_key").val().trim();
 		cfg.profiles[cfg.profile].wavelog_id=$("#wavelog_id").val().trim();
 		cfg.profiles[cfg.profile].wavelog_radioname=$("#wavelog_radioname").val().trim();
-		cfg.profiles[cfg.profile].flrig_host=$("#flrig_host").val().trim();
-		cfg.profiles[cfg.profile].flrig_port=$("#flrig_port").val().trim();
-		cfg.profiles[cfg.profile].flrig_ena=$("#flrig_ena").is(':checked');
-		cfg.profiles[cfg.profile].hamlib_ena=$("#hamlib_ena").is(':checked');
 		cfg.profiles[cfg.profile].wavelog_pmode=$("#wavelog_pmode").is(':checked');
 
-		// advanced
-		if ($("#flrig_ena").is(':checked') && cfg.profiles[cfg.profile].hamlib_ena){
-			cfg.profiles[cfg.profile].hamlib_ena = false;
+		// Save radio configuration based on selected radio type
+		const selectedRadio = $('#radio_type').val();
+
+		// Reset all radio settings first
+		cfg.profiles[cfg.profile].flrig_ena = false;
+		cfg.profiles[cfg.profile].hamlib_ena = false;
+
+		switch(selectedRadio) {
+			case 'flrig':
+				cfg.profiles[cfg.profile].flrig_ena = true;
+				cfg.profiles[cfg.profile].flrig_host = $("#radio_host").val().trim();
+				cfg.profiles[cfg.profile].flrig_port = $("#radio_port").val().trim();
+				break;
+			case 'hamlib':
+				cfg.profiles[cfg.profile].hamlib_ena = true;
+				cfg.profiles[cfg.profile].hamlib_host = $("#radio_host").val().trim();
+				cfg.profiles[cfg.profile].hamlib_port = $("#radio_port").val().trim();
+				cfg.profiles[cfg.profile].ignore_pwr = $("#ignore_pwr").is(':checked');
+				break;
+			case 'none':
+			default:
+				// All radio settings already disabled
+				break;
 		}
 
 		cfg=await ipcRenderer.sendSync("set_config", cfg);
@@ -105,7 +121,7 @@ $(document).ready(function() {
 	$("#config-tab").on("click",function() {
 		const obj={};
 		obj.width=430;
-		obj.height=550;
+		obj.height=500;
 		obj.ani=false;
 		resizeme(obj);
 	});
@@ -119,8 +135,13 @@ $(document).ready(function() {
 	});
 
 	ipcRenderer.on('get_info', async (event, arg) => {
-		const result = await getInfo(arg); 
+		const result = await getInfo(arg);
 		ipcRenderer.send('get_info_result', result);
+	});
+
+	// Dropdown change handler
+	$('#radio_type').change(function() {
+		updateRadioFields();
 	});
 });
 
@@ -131,10 +152,19 @@ async function load_config() {
 	$("#wavelog_key").val(cfg.profiles[active_cfg].wavelog_key);
 	// $("#wavelog_id").val(cfg.wavelog_id);
 	$("#wavelog_radioname").val(cfg.profiles[active_cfg].wavelog_radioname);
-	$("#flrig_host").val(cfg.profiles[active_cfg].flrig_host);
-	$("#flrig_port").val(cfg.profiles[active_cfg].flrig_port);
-	$("#flrig_ena").prop("checked", cfg.profiles[active_cfg].flrig_ena);
 	$("#wavelog_pmode").prop("checked", cfg.profiles[active_cfg].wavelog_pmode);
+
+	// Set radio type based on existing configuration
+	if (cfg.profiles[active_cfg].flrig_ena) {
+		$('#radio_type').val('flrig');
+	} else if (cfg.profiles[active_cfg].hamlib_ena) {
+		$('#radio_type').val('hamlib');
+	} else {
+		$('#radio_type').val('none');
+	}
+
+	// Update radio fields based on selection
+	updateRadioFields();
 
 	if (cfg.profiles[active_cfg].wavelog_key != "" && cfg.profiles[active_cfg].wavelog_url != "") {
 		getStations();
@@ -151,6 +181,46 @@ function resizeme(size) {
 
 function select(selector) {
 	return document.querySelector(selector);
+}
+
+function updateRadioFields() {
+	const selectedRadio = $('#radio_type').val();
+
+	// Reset all fields
+	$("#radio_host").prop('disabled', selectedRadio === 'none');
+	$("#radio_port").prop('disabled', selectedRadio === 'none');
+	$("#wavelog_pmode").prop('disabled', selectedRadio === 'none');
+	$("#hamlib_options").hide();
+
+	// Update field labels and values based on selection
+	switch(selectedRadio) {
+		case 'flrig':
+			$("#host_label").text("FLRig Host");
+			$("#port_label").text("FLRig Port");
+			$("#pmode_label").text("Set MODE via FLRig");
+			$("#radio_host").val(cfg.profiles[active_cfg].flrig_host || '127.0.0.1');
+			$("#radio_port").val(cfg.profiles[active_cfg].flrig_port || '12345');
+			$("#wavelog_pmode").prop('checked', cfg.profiles[active_cfg].wavelog_pmode);
+			break;
+		case 'hamlib':
+			$("#host_label").text("Hamlib Host");
+			$("#port_label").text("Hamlib Port");
+			$("#pmode_label").text("Set MODE via Hamlib");
+			$("#radio_host").val(cfg.profiles[active_cfg].hamlib_host || '127.0.0.1');
+			$("#radio_port").val(cfg.profiles[active_cfg].hamlib_port || '4532');
+			$("#wavelog_pmode").prop('checked', cfg.profiles[active_cfg].wavelog_pmode);
+			$("#hamlib_options").show();
+			$("#ignore_pwr").prop('checked', cfg.profiles[active_cfg].ignore_pwr);
+			break;
+		case 'none':
+		default:
+			$("#host_label").text("Radio Host");
+			$("#port_label").text("Radio Port");
+			$("#pmode_label").text("Set MODE via Radio");
+			$("#radio_host").val('');
+			$("#radio_port").val('');
+			break;
+	}
 }
 
 window.TX_API.onUpdateMsg((value) => {
@@ -192,7 +262,7 @@ async function getInfo(which) {
 	if (cfg.profiles[active_cfg].flrig_ena){
 		try {
 			const response = await fetch(
-				"http://"+$("#flrig_host").val()+':'+$("#flrig_port").val(), {
+				"http://"+$("#radio_host").val()+':'+$("#radio_port").val(), {
 					method: 'POST',
 					// mode: 'no-cors',
 					headers: {
@@ -252,7 +322,7 @@ async function getInfo(which) {
 }
 
 async function getsettrx() {
-	if ($("#flrig_ena").is(':checked') || cfg.profiles[active_cfg].hamlib_ena) {
+	if (cfg.profiles[active_cfg].flrig_ena || cfg.profiles[active_cfg].hamlib_ena) {
 		console.log('Polling TRX '+trxpoll);
 		const x=get_trx();
 	}

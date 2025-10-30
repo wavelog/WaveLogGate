@@ -69,36 +69,6 @@ function createWindow () {
 	return mainWindow;
 }
 
-function createAdvancedWindow (mainWindow) {
-	let advancedWindow;
-	globalShortcut.register('Control+Shift+D', () => {
-		if (!advancedWindow || advancedWindow.isDestroyed()) {
-			const bounds = mainWindow.getBounds();
-			advancedWindow = new BrowserWindow({
-				width: 430,
-				height: 250,
-				resizable: false,
-				autoHideMenuBar: app.isPackaged,
-				webPreferences: {
-					contextIsolation: false,
-					nodeIntegration: true,
-					devTools: !app.isPackaged,
-					enableRemoteModule: true,
-				},
-				x: bounds.x + bounds.width + 10,
-				y: bounds.y,
-			});
-			if (app.isPackaged) {
-				advancedWindow.setMenu(null);
-			}
-			advancedWindow.loadFile('advanced.html');
-			advancedWindow.setTitle(require('./package.json').name + " V" + require('./package.json').version);
-		} else {
-			advancedWindow.focus();
-		}
-
-	});
-}
 
 ipcMain.on("set_config", async (event,arg) => {
 	defaultcfg=arg;
@@ -222,7 +192,6 @@ if (!gotTheLock) {
 	app.whenReady().then(() => {
 		powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
 		s_mainWindow=createWindow();
-		createAdvancedWindow(s_mainWindow);
 		globalShortcut.register('Control+Shift+I', () => { return false; });
 		app.on('activate', function () {
 			if (BrowserWindow.getAllWindows().length === 0) createWindow()
