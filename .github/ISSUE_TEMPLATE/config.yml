@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature Request 💡
+    url: https://github.com/wavelog/wavelog/discussions/new?category=wl-gate
+    about: Suggest new features or improvements
+  - name: Setup & Usage Questions ❓💬
+    url: https://github.com/wavelog/wavelog/discussions/new?category=wl-gate
+    about: For setup help and general questions
