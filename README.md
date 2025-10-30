@@ -2,6 +2,12 @@
 
 A modern Electron-based gateway application that connects WSJT-X, FLRig, Hamlib, and other amateur radio software to WaveLog for seamless logging and radio control.
 
+# TL;DR:
+- For CAT you'll need [FLRig](https://www.w1hkj.org/files/flrig/) or [Hamlib](https://github.com/Hamlib/Hamlib/wiki/Download) installed and connected to your Transceiver.
+- For logging QSOs from WSJT-X, you need to configure the so called "Secondary UDP Server" like shown in the picture:
+<img width="788" height="312" alt="image" src="https://github.com/user-attachments/assets/a4d005d0-8546-4ae3-99e8-89a195df9e0e" />
+
+
 ## Features
 
 ### Core Functionality
