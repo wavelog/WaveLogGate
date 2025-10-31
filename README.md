@@ -129,7 +129,6 @@ ws.onmessage = (event) => {
 };
 ```
 
-See [WEBSOCKET_README.md](WEBSOCKET_README.md) for detailed integration examples.
 
 ## Advanced Settings
 
