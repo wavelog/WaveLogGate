@@ -6,6 +6,10 @@ const xml = require("xml2js");
 const net = require('net');
 const WebSocket = require('ws');
 
+// In some cases we need to make the WLgate window resizable (for example for tiling window managers)
+// Default: false
+const resizable = process.env.WLGATE_RESIZABLE === 'true' || false;
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 let powerSaveBlockerId;
@@ -47,7 +51,7 @@ function createWindow () {
 	const mainWindow = new BrowserWindow({
 		width: 430,
 		height: 250,
-		resizable: false,
+		resizable: resizable, // Default: false, can be overwritten with WLGATE_RESIZABLE
 		autoHideMenuBar: app.isPackaged,
 		webPreferences: {
 			contextIsolation: false,
