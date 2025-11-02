@@ -140,6 +140,15 @@ Access advanced settings by pressing **Ctrl+Shift+D** in the configuration windo
 
 **Note**: Advanced settings are in beta - restart the application after changes to ensure they're applied correctly.
 
+### Special: Tiling Window Managers like i3 or Hyprland
+
+With tiling window managers the window will be at it's fixed size which is usually okay for the normal user. In tiling WM this doesn't work properly. To fix that you can allow the window to resize by setting a env variable. This will only affect a handful of users and they will know how to handle it.
+
+```bash
+export WLGATE_RESIZABLE=true
+./path_to_your_bin
+```
+
 ## Development
 
 ### Prerequisites
