@@ -168,6 +168,17 @@ app.on('before-quit', () => {
     if (httpServer) {
         httpServer.close();
     }
+    if (wsServer) {
+        // Close all WebSocket client connections
+        wsClients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.close();
+            }
+        });
+        wsClients.clear();
+        // Close the WebSocket server
+        wsServer.close();
+    }
 });
 
 process.on('SIGINT', () => {
