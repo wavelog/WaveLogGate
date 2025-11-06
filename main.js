@@ -16,6 +16,7 @@ let currentCAT=null;
 var WServer;
 let wsServer;
 let wsClients = new Set();
+let isShuttingDown = false;
 
 const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rst_rcvd:2>33 <qso_date:8>20240110 <time_on:6>051855 <qso_date_off:8>20240110 <time_off:6>051855 <band:3>40m <freq:8>7.155783 <station_callsign:5>TE1ST <my_gridsquare:6>JO30OO <eor>';
 
@@ -112,7 +113,8 @@ ipcMain.on("setCAT", async (event,arg) => {
 });
 
 ipcMain.on("quit", async (event,arg) => {
-	app.isQuitting = true;
+	console.log('Quit requested from renderer');
+	shutdownApplication();
 	app.quit();
 	event.returnValue=true;
 });
@@ -122,6 +124,41 @@ ipcMain.on("radio_status_update", async (event,arg) => {
 	broadcastRadioStatus(arg);
 	event.returnValue=true;
 });
+
+function shutdownApplication() {
+    if (isShuttingDown) {
+        console.log('Shutdown already in progress, ignoring duplicate request');
+        return;
+    }
+
+    isShuttingDown = true;
+    console.log('Initiating application shutdown...');
+
+    try {
+        // Close all servers
+        if (WServer) {
+            console.log('Closing UDP server...');
+            WServer.close();
+        }
+        if (httpServer) {
+            console.log('Closing HTTP server...');
+            httpServer.close();
+        }
+        if (wsServer) {
+            console.log('Closing WebSocket server and clients...');
+            // Close all WebSocket client connections
+            wsClients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.close();
+                }
+            });
+            wsClients.clear();
+            wsServer.close();
+        }
+    } catch (error) {
+        console.error('Error during server shutdown:', error);
+    }
+}
 
 function show_noti(arg) {
 	if (Notification.isSupported()) {
@@ -161,30 +198,13 @@ ipcMain.on("test", async (event,arg) => {
 });
 
 app.on('before-quit', () => {
-    console.log('Shutting down servers...');
-    if (WServer) {
-        WServer.close();
-    }
-    if (httpServer) {
-        httpServer.close();
-    }
-    if (wsServer) {
-        // Close all WebSocket client connections
-        wsClients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.close();
-            }
-        });
-        wsClients.clear();
-        // Close the WebSocket server
-        wsServer.close();
-    }
+    console.log('before-quit event triggered');
+    shutdownApplication();
 });
 
 process.on('SIGINT', () => {
-    console.log('SIGINT received, closing servers...');
-    if (WServer) WServer.close();
-    if (httpServer) httpServer.close();
+    console.log('SIGINT received, initiating shutdown...');
+    shutdownApplication();
     process.exit(0);
 });
 
@@ -216,8 +236,12 @@ if (!gotTheLock) {
 }
 
 app.on('window-all-closed', function () {
+	console.log('All windows closed, initiating shutdown...');
+	if (!isShuttingDown) {
+		shutdownApplication();
+	}
 	if (process.platform !== 'darwin') app.quit();
-	app.quit();
+	else app.quit();
 })
 
 function normalizeTxPwr(adifdata) {
