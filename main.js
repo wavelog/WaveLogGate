@@ -135,6 +135,12 @@ function shutdownApplication() {
     console.log('Initiating application shutdown...');
 
     try {
+        // Signal renderer to clear timers
+        if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+            console.log('Sending cleanup signal to renderer...');
+            s_mainWindow.webContents.send('cleanup');
+        }
+
         // Close all servers
         if (WServer) {
             console.log('Closing UDP server...');

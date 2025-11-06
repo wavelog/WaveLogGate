@@ -10,6 +10,7 @@
 let cfg={};
 let active_cfg=0;
 let trxpoll=undefined;
+let utcTimeInterval=undefined;
 
 const {ipcRenderer} = require('electron')
 const net = require('net');
@@ -81,6 +82,7 @@ $(document).ready(function() {
 	});
 
 	bt_quit.addEventListener('click', () => {
+		cleanupTimers(); // Clear all timers before quit
 		const x=ipcRenderer.sendSync("quit", '');
 	});
 
@@ -115,7 +117,7 @@ $(document).ready(function() {
 		getStations();
 	});
 
-	setInterval(updateUtcTime, 1000);
+	utcTimeInterval = setInterval(updateUtcTime, 1000);
 	window.onload = updateUtcTime;
 
 	$("#config-tab").on("click",function() {
@@ -137,6 +139,11 @@ $(document).ready(function() {
 	ipcRenderer.on('get_info', async (event, arg) => {
 		const result = await getInfo(arg);
 		ipcRenderer.send('get_info_result', result);
+	});
+
+	// Handle cleanup request from main process
+	ipcRenderer.on('cleanup', () => {
+		cleanupTimers();
 	});
 
 	// Dropdown change handler
@@ -394,6 +401,22 @@ async function informWavelog(CAT) {
 		body: JSON.stringify(data)
 	});
 	return x;
+}
+
+function cleanupTimers() {
+	// Clear radio polling timeout
+	if (trxpoll) {
+		clearTimeout(trxpoll);
+		trxpoll = undefined;
+		console.log('Cleared radio polling timeout');
+	}
+
+	// Clear UTC time update interval
+	if (utcTimeInterval) {
+		clearInterval(utcTimeInterval);
+		utcTimeInterval = undefined;
+		console.log('Cleared UTC time update interval');
+	}
 }
 
 function updateUtcTime() {
