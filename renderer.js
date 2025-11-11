@@ -125,7 +125,7 @@ $(document).ready(function() {
 	$("#config-tab").on("click",function() {
 		const obj={};
 		obj.width=430;
-		obj.height=550;
+		obj.height=625;
 		obj.ani=false;
 		resizeme(obj);
 	});
