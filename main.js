@@ -37,6 +37,8 @@ let defaultcfg = {
 	hamlib_port: '4532',
 	hamlib_ena: false,
 	ignore_pwr: false,
+	cf_access_client_id: '',
+	cf_access_client_secret: '',
 }
 
 const storage = require('electron-json-storage');
@@ -290,6 +292,14 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 			'Content-Length': postData.length
 		}
 	};
+
+	// Add custom Cloudflare Access headers if configured
+	if (o_cfg.cf_access_client_id && o_cfg.cf_access_client_id.trim() !== '') {
+		options.headers['CF-Access-Client-Id'] = o_cfg.cf_access_client_id.trim();
+	}
+	if (o_cfg.cf_access_client_secret && o_cfg.cf_access_client_secret.trim() !== '') {
+		options.headers['CF-Access-Client-Secret'] = o_cfg.cf_access_client_secret.trim();
+	}
 
 	return new Promise((resolve, reject) => {
 		let rej=false;

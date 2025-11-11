@@ -51,6 +51,10 @@ $(document).ready(function() {
 		cfg.profiles[cfg.profile].wavelog_id=$("#wavelog_id").val().trim();
 		cfg.profiles[cfg.profile].wavelog_radioname=$("#wavelog_radioname").val().trim();
 		cfg.profiles[cfg.profile].wavelog_pmode=$("#wavelog_pmode").is(':checked');
+		
+		// Save custom Cloudflare Access headers
+		cfg.profiles[cfg.profile].cf_access_client_id=$("#cf_access_client_id").val().trim();
+		cfg.profiles[cfg.profile].cf_access_client_secret=$("#cf_access_client_secret").val().trim();
 
 		// Save radio configuration based on selected radio type
 		const selectedRadio = $('#radio_type').val();
@@ -153,6 +157,10 @@ async function load_config() {
 	// $("#wavelog_id").val(cfg.wavelog_id);
 	$("#wavelog_radioname").val(cfg.profiles[active_cfg].wavelog_radioname);
 	$("#wavelog_pmode").prop("checked", cfg.profiles[active_cfg].wavelog_pmode);
+	
+	// Load custom Cloudflare Access headers
+	$("#cf_access_client_id").val(cfg.profiles[active_cfg].cf_access_client_id || '');
+	$("#cf_access_client_secret").val(cfg.profiles[active_cfg].cf_access_client_secret || '');
 
 	// Set radio type based on existing configuration
 	if (cfg.profiles[active_cfg].flrig_ena) {
@@ -384,13 +392,24 @@ async function informWavelog(CAT) {
 	console.log(data);
 	ipcRenderer.send('radio_status_update', data);
 
+	// Build headers object
+	const headers = {
+		Accept: 'application.json',
+		'Content-Type': 'application/json',
+	};
+	
+	// Add custom Cloudflare Access headers if configured
+	if (cfg.profiles[active_cfg].cf_access_client_id && cfg.profiles[active_cfg].cf_access_client_id.trim() !== '') {
+		headers['CF-Access-Client-Id'] = cfg.profiles[active_cfg].cf_access_client_id.trim();
+	}
+	if (cfg.profiles[active_cfg].cf_access_client_secret && cfg.profiles[active_cfg].cf_access_client_secret.trim() !== '') {
+		headers['CF-Access-Client-Secret'] = cfg.profiles[active_cfg].cf_access_client_secret.trim();
+	}
+
 	let x=await fetch(cfg.profiles[active_cfg].wavelog_url + '/api/radio', {
 		method: 'POST',
 		rejectUnauthorized: false,
-		headers: {
-			Accept: 'application.json',
-			'Content-Type': 'application/json',
-		},
+		headers: headers,
 		body: JSON.stringify(data)
 	});
 	return x;
@@ -413,13 +432,24 @@ async function getStations() {
 	select.empty();
 	select.prop('disabled', true);
 	try {
+		// Build headers object
+		const headers = {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+		};
+		
+		// Add custom Cloudflare Access headers if configured
+		if (cfg.profiles[active_cfg].cf_access_client_id && cfg.profiles[active_cfg].cf_access_client_id.trim() !== '') {
+			headers['CF-Access-Client-Id'] = cfg.profiles[active_cfg].cf_access_client_id.trim();
+		}
+		if (cfg.profiles[active_cfg].cf_access_client_secret && cfg.profiles[active_cfg].cf_access_client_secret.trim() !== '') {
+			headers['CF-Access-Client-Secret'] = cfg.profiles[active_cfg].cf_access_client_secret.trim();
+		}
+
 		const x = await fetch($('#wavelog_url').val().trim() + '/api/station_info/' + $('#wavelog_key').val().trim(), {
 			method: 'GET',
 			rejectUnauthorized: false,
-			headers: {
-				Accept: 'application/json',
-				'Content-Type': 'application/json',
-			},
+			headers: headers,
 		});
 
 		if (!x.ok) {
