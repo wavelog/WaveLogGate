@@ -81,6 +81,14 @@ xattr -d com.apple.quarantine /Applications/WaveLogGate.app
 - **Mode Control**: Enable to let WaveLogGate set radio modes automatically
 - **Ignore Power**: Check if your radio doesn't report power correctly
 
+### Custom HTTP Headers (Optional)
+
+If your WaveLog instance is behind Cloudflare Access or similar authentication proxy, you can configure custom HTTP headers:
+- **CF-Access-Client-Id**: Client ID for Cloudflare Access authentication
+- **CF-Access-Client-Secret**: Client Secret for Cloudflare Access authentication
+
+These headers are automatically included in all requests to your WaveLog server when configured. Leave them empty if you don't need them.
+
 ### Profile Management
 WaveLogGate supports two complete configuration profiles:
 - Click the profile toggle button (1/2) to switch between profiles
