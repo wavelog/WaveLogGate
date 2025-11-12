@@ -20,6 +20,9 @@ let currentCAT=null;
 var WServer;
 let wsServer;
 let wsClients = new Set();
+let isShuttingDown = false;
+let activeConnections = new Set(); // Track active TCP connections
+let activeHttpRequests = new Set(); // Track active HTTP requests for cancellation
 
 const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rst_rcvd:2>33 <qso_date:8>20240110 <time_on:6>051855 <qso_date_off:8>20240110 <time_off:6>051855 <band:3>40m <freq:8>7.155783 <station_callsign:5>TE1ST <my_gridsquare:6>JO30OO <eor>';
 
@@ -116,7 +119,8 @@ ipcMain.on("setCAT", async (event,arg) => {
 });
 
 ipcMain.on("quit", async (event,arg) => {
-	app.isQuitting = true;
+	console.log('Quit requested from renderer');
+	shutdownApplication();
 	app.quit();
 	event.returnValue=true;
 });
@@ -126,6 +130,84 @@ ipcMain.on("radio_status_update", async (event,arg) => {
 	broadcastRadioStatus(arg);
 	event.returnValue=true;
 });
+
+function cleanupConnections() {
+    console.log('Cleaning up active TCP connections...');
+
+    // Close all tracked TCP connections
+    activeConnections.forEach(connection => {
+        try {
+            if (connection && !connection.destroyed) {
+                connection.destroy();
+                console.log('Closed TCP connection');
+            }
+        } catch (error) {
+            console.error('Error closing TCP connection:', error);
+        }
+    });
+
+    // Clear the connections set
+    activeConnections.clear();
+    console.log('All TCP connections cleaned up');
+
+    // Abort all in-flight HTTP requests
+    activeHttpRequests.forEach(request => {
+        try {
+            request.abort();
+            console.log('Aborted HTTP request');
+        } catch (error) {
+            console.error('Error aborting HTTP request:', error);
+        }
+    });
+
+    // Clear the HTTP requests set
+    activeHttpRequests.clear();
+    console.log('All HTTP requests aborted');
+}
+
+function shutdownApplication() {
+    if (isShuttingDown) {
+        console.log('Shutdown already in progress, ignoring duplicate request');
+        return;
+    }
+
+    isShuttingDown = true;
+    console.log('Initiating application shutdown...');
+
+    try {
+        // Signal renderer to clear timers and connections
+        if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+            console.log('Sending cleanup signal to renderer...');
+            s_mainWindow.webContents.send('cleanup');
+        }
+
+        // Clean up TCP connections
+        cleanupConnections();
+
+        // Close all servers
+        if (WServer) {
+            console.log('Closing UDP server...');
+            WServer.close();
+        }
+        if (httpServer) {
+            console.log('Closing HTTP server...');
+            httpServer.close();
+        }
+        if (wsServer) {
+            console.log('Closing WebSocket server and clients...');
+            // Close all WebSocket client connections
+            wsClients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.close();
+                }
+            });
+            wsClients.clear();
+            wsServer.close();
+        }
+    } catch (error) {
+        console.error('Error during server shutdown:', error);
+    }
+}
 
 function show_noti(arg) {
 	if (Notification.isSupported()) {
@@ -165,19 +247,13 @@ ipcMain.on("test", async (event,arg) => {
 });
 
 app.on('before-quit', () => {
-    console.log('Shutting down servers...');
-    if (WServer) {
-        WServer.close();
-    }
-    if (httpServer) {
-        httpServer.close();
-    }
+    console.log('before-quit event triggered');
+    shutdownApplication();
 });
 
 process.on('SIGINT', () => {
-    console.log('SIGINT received, closing servers...');
-    if (WServer) WServer.close();
-    if (httpServer) httpServer.close();
+    console.log('SIGINT received, initiating shutdown...');
+    shutdownApplication();
     process.exit(0);
 });
 
@@ -209,8 +285,12 @@ if (!gotTheLock) {
 }
 
 app.on('window-all-closed', function () {
+	console.log('All windows closed, initiating shutdown...');
+	if (!isShuttingDown) {
+		shutdownApplication();
+	}
 	if (process.platform !== 'darwin') app.quit();
-	app.quit();
+	else app.quit();
 })
 
 function normalizeTxPwr(adifdata) {
@@ -310,6 +390,9 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 			const body = [];
 			res.on('data', (chunk) => body.push(chunk));
 			res.on('end', () => {
+				// Remove request from tracking when completed
+				activeHttpRequests.delete(req);
+
 				let resString = Buffer.concat(body).toString();
 				if (rej) {
 					if (resString.indexOf('html>')>0) {
@@ -325,6 +408,8 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 		})
 
 		req.on('error', (err) => {
+			// Remove request from tracking on error
+			activeHttpRequests.delete(req);
 			rej=true;
 			req.destroy();
 			result.resString='{"status":"failed","reason":"internet problem"}';
@@ -332,11 +417,16 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 		})
 
 		req.on('timeout', (err) => {
+			// Remove request from tracking on timeout
+			activeHttpRequests.delete(req);
 			rej=true;
 			req.destroy();
 			result.resString='{"status":"failed","reason":"timeout"}';
 			reject(result);
 		})
+
+		// Track the HTTP request for cleanup
+		activeHttpRequests.add(req);
 
 		req.write(postData);
 		req.end();
@@ -619,8 +709,15 @@ async function settrx(qrg, mode = '') {
 			client.end();
 		});
 
-		client.on("error", (err) => {});
-		client.on("close", () => {});
+		// Track the connection for cleanup
+		activeConnections.add(client);
+
+		client.on("error", (err) => {
+			activeConnections.delete(client);
+		});
+		client.on("close", () => {
+			activeConnections.delete(client);
+		});
 	}
 
 	// Broadcast frequency/mode change to WebSocket clients
