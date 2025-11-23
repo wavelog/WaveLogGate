@@ -10,6 +10,9 @@
 let cfg={};
 let active_cfg=0;
 let trxpoll=undefined;
+let utcTimeInterval=undefined;
+let activeConnections = new Set(); // Track active TCP connections in renderer
+let activeAbortControllers = new Set(); // Track active HTTP requests for cancellation
 
 const {ipcRenderer} = require('electron')
 const net = require('net');
@@ -81,6 +84,7 @@ $(document).ready(function() {
 	});
 
 	bt_quit.addEventListener('click', () => {
+		cleanup(); // Clear all timers and connections before quit
 		const x=ipcRenderer.sendSync("quit", '');
 	});
 
@@ -115,7 +119,7 @@ $(document).ready(function() {
 		getStations();
 	});
 
-	setInterval(updateUtcTime, 1000);
+	utcTimeInterval = setInterval(updateUtcTime, 1000);
 	window.onload = updateUtcTime;
 
 	$("#config-tab").on("click",function() {
@@ -137,6 +141,11 @@ $(document).ready(function() {
 	ipcRenderer.on('get_info', async (event, arg) => {
 		const result = await getInfo(arg);
 		ipcRenderer.send('get_info_result', result);
+	});
+
+	// Handle cleanup request from main process
+	ipcRenderer.on('cleanup', () => {
+		cleanup();
 	});
 
 	// Dropdown change handler
@@ -260,6 +269,9 @@ async function get_trx() {
 
 async function getInfo(which) {
 	if (cfg.profiles[active_cfg].flrig_ena){
+		const abortController = new AbortController();
+		activeAbortControllers.add(abortController);
+
 		try {
 			const response = await fetch(
 				"http://"+$("#radio_host").val()+':'+$("#radio_port").val(), {
@@ -270,8 +282,10 @@ async function getInfo(which) {
 						'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
 					},
 					body: '<?xml version="1.0"?><methodCall><methodName>'+which+'</methodName></methodCall>',
+					signal: abortController.signal
 				}
 			);
+
 			const data = await response.text();
 			const parser = new DOMParser();
 			const xmlDoc = parser.parseFromString(data, "application/xml");
@@ -292,6 +306,9 @@ async function getInfo(which) {
 			}
 		} catch (e) {
 			return '';
+		} finally {
+			// Always clean up abort controller when done
+			activeAbortControllers.delete(abortController);
 		}
 	}
 	if (cfg.profiles[active_cfg].hamlib_ena) {
@@ -303,6 +320,10 @@ async function getInfo(which) {
 		return new Promise((resolve, reject) => {
 			if (commands[which]) {
 				const client = net.createConnection({ host, port }, () => client.write(commands[which]));
+
+				// Track the connection for cleanup
+				activeConnections.add(client);
+
 				client.on('data', (data) => {
 					data = data.toString()
 					if(data.startsWith("RPRT")){
@@ -312,8 +333,13 @@ async function getInfo(which) {
 					}
 					client.end();
 				});
-				client.on('error', (err) => reject());
-				client.on("close", () => {});
+				client.on('error', (err) => {
+					activeConnections.delete(client);
+					reject();
+				});
+				client.on("close", () => {
+					activeConnections.delete(client);
+				});
 			} else {
 				resolve(undefined);
 			}
@@ -394,6 +420,59 @@ async function informWavelog(CAT) {
 		body: JSON.stringify(data)
 	});
 	return x;
+}
+
+function cleanupConnections() {
+	console.log('Cleaning up renderer TCP connections...');
+
+	// Close all tracked TCP connections
+	activeConnections.forEach(connection => {
+		try {
+			if (connection && !connection.destroyed) {
+				connection.destroy();
+				console.log('Closed renderer TCP connection');
+			}
+		} catch (error) {
+			console.error('Error closing renderer TCP connection:', error);
+		}
+	});
+
+	// Clear the connections set
+	activeConnections.clear();
+	console.log('All renderer TCP connections cleaned up');
+
+	// Abort all in-flight HTTP requests
+	activeAbortControllers.forEach(controller => {
+		try {
+			controller.abort();
+			console.log('Aborted HTTP request');
+		} catch (error) {
+			console.error('Error aborting HTTP request:', error);
+		}
+	});
+
+	// Clear the abort controllers set
+	activeAbortControllers.clear();
+	console.log('All HTTP requests aborted');
+}
+
+function cleanup() {
+	// Clear radio polling timeout
+	if (trxpoll) {
+		clearTimeout(trxpoll);
+		trxpoll = undefined;
+		console.log('Cleared radio polling timeout');
+	}
+
+	// Clear UTC time update interval
+	if (utcTimeInterval) {
+		clearInterval(utcTimeInterval);
+		utcTimeInterval = undefined;
+		console.log('Cleared UTC time update interval');
+	}
+
+	// Clean up TCP connections
+	cleanupConnections();
 }
 
 function updateUtcTime() {

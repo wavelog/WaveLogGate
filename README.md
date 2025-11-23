@@ -7,6 +7,10 @@ A modern Electron-based gateway application that connects WSJT-X, FLRig, Hamlib,
 - For logging QSOs from WSJT-X, you need to configure the so called "Secondary UDP Server" like shown in the picture:
 <img width="788" height="312" alt="image" src="https://github.com/user-attachments/assets/a4d005d0-8546-4ae3-99e8-89a195df9e0e" />
 
+# Alternatives
+If you want to use a lean headless-Version for CAT or QSO-Transportation, which runs on 32bit-Systems as well, try our partner-projects (no suppert for it - experimentat):
+- CAT: [WaveLogGoat](https://github.com/johnsonm/WaveLogGoat)
+- QSO-Transport: [WaveLogStoat](https://github.com/int2001/WaveLogStoat)
 
 ## Features
 
@@ -98,6 +102,61 @@ WaveLogGate supports two complete configuration profiles:
 ### FLDigi Setup
 Configure FLDigi to send ADIF logs via UDP to port 2333.
 
+### Hamlib Setup
+
+#### Quickstart - e.g. - for Icom IC-7300 
+In general have a look at the [pages/wiki](https://github.com/Hamlib/Hamlib) for hamlib / rigctld
+As an example for Icom transceivers like the IC-7300, you can use `rigctld` (Hamlib daemon) to provide CAT control:
+
+1. **Install Hamlib** (if not already installed):
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install hamlib-utils
+   # macOS
+   brew install hamlib
+   # Windows
+   # Download from https://github.com/Hamlib/Hamlib/releases
+   ```
+
+2. **Start rigctld for IC-7300**:
+   ```bash
+   # Basic configuration for IC-7300 on USB serial port
+   rigctld -m 306 -r /dev/ttyUSB0 -s 38400 -T localhost -t 4532
+
+   # Windows example (replace COM3 with your actual port)
+   rigctld.exe -m 306 -r COM3 -s 38400 -T localhost -t 4532
+   ```
+
+   **Parameters explained**:
+   - `-m 306`: Model number for - e.g. - Icom IC-7300 (use `rigctl -l` to see all models)
+   - `-r /dev/ttyUSB0`: Serial port device (adjust for your setup / on Windows its COMx)
+   - `-s 38400`: Serial baud rate (IC-7300 default is 38400)
+   - `-T localhost`: TCP host for rigctld daemon
+   - `-t 4532`: TCP port for rigctld daemon (default WaveLogGate Hamlib port)
+
+3. **Configure WaveLogGate**:
+   - Radio type: **Hamlib**
+   - Host: `127.0.0.1`
+   - Port: `4532` (must match rigctld port)
+
+#### Common Hamlib Model Numbers
+- **Icom IC-7300**: `306`
+- **Icom IC-705**: `439`
+- **Icom IC-7610**: `378`
+- **Yaesu FT-891**: `161`
+- **Yaesu FT-991A**: `146`
+
+#### Troubleshooting Hamlib
+```bash
+# List all supported radios
+rigctl -l
+
+# Test connection (run after rigctld is running)
+rigctl -m 306 -r /dev/ttyUSB0 get_freq
+```
+
+**Important**: `rigctld` must remain running in the background for WaveLogGate to control your radio.
+
 ### WaveLog Integration
 1. **For Live QSOs**: Open WaveLog Live Logging → Radio tab → Select "WLGate"
 2. **For Manual QSOs**: In Stations tab, select "WLGate" as radio
@@ -139,6 +198,15 @@ Access advanced settings by pressing **Ctrl+Shift+D** in the configuration windo
 - **Debug Options**: Additional logging and troubleshooting options
 
 **Note**: Advanced settings are in beta - restart the application after changes to ensure they're applied correctly.
+
+### Special: Tiling Window Managers like i3 or Hyprland
+
+With tiling window managers the window will be at it's fixed size which is usually okay for the normal user. In tiling WM this doesn't work properly. To fix that you can allow the window to resize by setting a env variable. This will only affect a handful of users and they will know how to handle it.
+
+```bash
+export WLGATE_RESIZABLE=true
+./path_to_your_bin
+```
 
 ## Development
 
