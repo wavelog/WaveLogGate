@@ -320,8 +320,23 @@ function normalizeTxPwr(adifdata) {
 	});
 }
 
+function normalizeKIndex(adifdata) {
+	return adifdata.replace(/<K_INDEX:(\d+)>([^<]+)/gi, (match, length, value) => {
+		const numValue = parseFloat(value.trim());
+		if (isNaN(numValue)) return ''; // Remove if not a number
+		
+		// Round to nearest integer and clamp to 0-9 range
+		let kIndex = Math.round(numValue);
+		if (kIndex < 0) kIndex = 0;
+		if (kIndex > 9) kIndex = 9;
+		
+		return `<K_INDEX:${kIndex.toString().length}>${kIndex}`;
+	});
+}
+
 function manipulateAdifData(adifdata) {
 	adifdata = normalizeTxPwr(adifdata);
+	adifdata = normalizeKIndex(adifdata);
 	// add more manipulation if necessary here
 	// ...
 	return adifdata;
