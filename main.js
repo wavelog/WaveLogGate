@@ -322,6 +322,9 @@ function normalizeTxPwr(adifdata) {
 
 function manipulateAdifData(adifdata) {
 	adifdata = normalizeTxPwr(adifdata);
+
+	// Remove K_INDEX fields - fix for Log4OM
+	adifdata = adifdata.replace(/<K_INDEX:\d+>[^<]+/gi, '');
 	// add more manipulation if necessary here
 	// ...
 	return adifdata;
