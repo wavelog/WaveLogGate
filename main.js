@@ -634,7 +634,7 @@ function broadcastRadioStatus(radioData) {
 async function get_modes() {
 	return new Promise((resolve) => {
 		ipcMain.once('get_info_result', (event, modes) => {
-			resolve(modes);
+			resolve(modes ?? ['CW','LSB','USB']);
 		});
 		s_mainWindow.webContents.send('get_info', 'rig.get_modes');
 	});
@@ -730,10 +730,12 @@ async function settrx(qrg, mode = '') {
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_ena) {
 		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_port }, () => {
 			// Reset split mode before setting frequency
-			client.write("S 0 VFOA\n");
+			client.write("s\n"); // Check split ONCE, otherwise Reset won't work
+			client.write("S 0 VFOA\n"); // Hamlib sometimes reacts, sometimes not, so:
+			client.write("S 0 TX\n"); // Double Tap!
 			client.write("F " + to.qrg + "\n");
 			if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
-				client.write("M " + to.mode + "\n-1");
+				client.write("M " + to.mode + " 0\n");
 			}
 			client.end();
 		});
