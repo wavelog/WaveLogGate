@@ -689,18 +689,6 @@ async function settrx(qrg, mode = '') {
 		let options={};
 		let x;
 
-		// Reset split mode before setting frequency
-		postData= '<?xml version="1.0"?>';
-		postData+='<methodCall><methodName>rig.set_split</methodName><params><param><value><boolean>false</boolean></value></param></params></methodCall>';
-		options = {
-			method: 'POST',
-			headers: {
-				'User-Agent': 'SW2WL_v' + app.getVersion(),
-				'Content-Length': postData.length
-			}
-		};
-		x=await httpPost(url,options,postData);
-
 		if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 			postData= '<?xml version="1.0"?>';
 			postData+='<methodCall><methodName>rig.set_modeA</methodName><params><param><value>' + to.mode + '</value></param></params></methodCall>';
@@ -729,10 +717,6 @@ async function settrx(qrg, mode = '') {
 
 	if (defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_ena) {
 		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_port }, () => {
-			// Reset split mode before setting frequency
-			client.write("s\n"); // Check split ONCE, otherwise Reset won't work
-			client.write("S 0 VFOA\n"); // Hamlib sometimes reacts, sometimes not, so:
-			client.write("S 0 TX\n"); // Double Tap!
 			client.write("F " + to.qrg + "\n");
 			if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
 				client.write("M " + to.mode + " 0\n");
