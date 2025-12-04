@@ -656,7 +656,6 @@ async function get_modes() {
 }
 
 function getClosestMode(requestedMode, availableModes) {
-	console.log(availableModes);
 	if (availableModes.includes(requestedMode)) {	// Check perfect matches
 		return requestedMode;
 	}
