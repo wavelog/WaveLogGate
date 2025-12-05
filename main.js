@@ -9,6 +9,7 @@ const WebSocket = require('ws');
 // In some cases we need to make the WLgate window resizable (for example for tiling window managers)
 // Default: false
 const resizable = process.env.WLGATE_RESIZABLE === 'true' || false;
+const sleepable = process.env.WLGATE_SLEEP === 'true' || false;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -259,7 +260,9 @@ process.on('SIGINT', () => {
 
 app.on('will-quit', () => {
 	try {
-		powerSaveBlocker.stop(powerSaveBlockerId);
+		if (!sleepable) {
+			powerSaveBlocker.stop(powerSaveBlockerId);
+		}
 	} catch(e) {
 		console.log(e);
 	}
@@ -270,7 +273,9 @@ if (!gotTheLock) {
 } else {
 	startserver();
 	app.whenReady().then(() => {
-		powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+		if (!sleepable) {
+			powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+		}
 		s_mainWindow=createWindow();
 		globalShortcut.register('Control+Shift+I', () => { return false; });
 		app.on('activate', function () {
