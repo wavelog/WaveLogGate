@@ -312,14 +312,20 @@ async function getInfo(which) {
 		}
 	}
 	if (cfg.profiles[active_cfg].hamlib_ena) {
-		var commands = {"rig.get_vfo": "f", "rig.get_mode": "m", "rig.get_ptt": 0, "rig.get_power": 0, "rig.get_split": 0, "rig.get_vfoB": 0, "rig.get_modeB": 0};
+		var commands = {"rig.get_vfo": "f", "rig.get_mode": "m", "rig.get_modes": "M ? 0", "rig.get_ptt": 0, "rig.get_power": 0, "rig.get_split": 0, "rig.get_vfoB": 0, "rig.get_modeB": 0};
 
 		const host = cfg.profiles[active_cfg].hamlib_host;
 		const port = parseInt(cfg.profiles[active_cfg].hamlib_port, 10);
 
 		return new Promise((resolve, reject) => {
 			if (commands[which]) {
-				const client = net.createConnection({ host, port }, () => client.write(commands[which]));
+				const client = net.createConnection({ host, port }, () => {
+					if (which === 'rig.get_modes') {
+						client.write(commands[which] + "\n");
+					} else {
+						client.write(commands[which]);
+					}
+				});
 
 				// Track the connection for cleanup
 				activeConnections.add(client);
@@ -329,7 +335,13 @@ async function getInfo(which) {
 					if(data.startsWith("RPRT")){
 						reject();
 					} else {
-						resolve(data.split('\n')[0]);
+						if (which === 'rig.get_modes') {
+							// Parse modes list - split by whitespace and filter empty strings
+							const modes = data.trim().split(/\s+/).filter(mode => mode.length > 0);
+							resolve(modes);
+						} else {
+							resolve(data.split('\n')[0]);
+						}
 					}
 					client.end();
 				});
