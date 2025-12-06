@@ -121,14 +121,14 @@ As an example for Icom transceivers like the IC-7300, you can use `rigctld` (Ham
 2. **Start rigctld for IC-7300**:
    ```bash
    # Basic configuration for IC-7300 on USB serial port
-   rigctld -m 306 -r /dev/ttyUSB0 -s 38400 -T localhost -t 4532
+   rigctld -m 3073 -r /dev/ttyUSB0 -s 38400 -T localhost -t 4532
 
    # Windows example (replace COM3 with your actual port)
-   rigctld.exe -m 306 -r COM3 -s 38400 -T localhost -t 4532
+   rigctld.exe -m 3073 -r COM3 -s 38400 -T localhost -t 4532
    ```
 
    **Parameters explained**:
-   - `-m 306`: Model number for - e.g. - Icom IC-7300 (use `rigctl -l` to see all models)
+   - `-m 3073`: Model number for - e.g. - Icom IC-7300 (use `rigctl -l` to see all models)
    - `-r /dev/ttyUSB0`: Serial port device (adjust for your setup / on Windows its COMx)
    - `-s 38400`: Serial baud rate (IC-7300 default is 38400)
    - `-T localhost`: TCP host for rigctld daemon
@@ -139,20 +139,13 @@ As an example for Icom transceivers like the IC-7300, you can use `rigctld` (Ham
    - Host: `127.0.0.1`
    - Port: `4532` (must match rigctld port)
 
-#### Common Hamlib Model Numbers
-- **Icom IC-7300**: `306`
-- **Icom IC-705**: `439`
-- **Icom IC-7610**: `378`
-- **Yaesu FT-891**: `161`
-- **Yaesu FT-991A**: `146`
-
 #### Troubleshooting Hamlib
 ```bash
 # List all supported radios
 rigctl -l
 
 # Test connection (run after rigctld is running)
-rigctl -m 306 -r /dev/ttyUSB0 get_freq
+rigctl -m 3073 -r /dev/ttyUSB0 get_freq
 ```
 
 **Important**: `rigctld` must remain running in the background for WaveLogGate to control your radio.
@@ -188,25 +181,45 @@ ws.onmessage = (event) => {
 };
 ```
 
+### Environment Variables
 
-## Advanced Settings
+WaveLogGate supports two environment variables to control specific behaviors:
 
-Access advanced settings by pressing **Ctrl+Shift+D** in the configuration window:
+#### WLGATE_RESIZABLE
+**Purpose**: Makes the application window resizable instead of fixed size
 
-- **Force Hamlib**: Override FLRig and use Hamlib instead
-- **Disable Power Transfer**: Stop sending power readings to WaveLog
-- **Debug Options**: Additional logging and troubleshooting options
+**Use Case**: Useful for tiling window managers (i3, Hyprland, etc.) or when you need to resize the window manually
 
-**Note**: Advanced settings are in beta - restart the application after changes to ensure they're applied correctly.
-
-### Special: Tiling Window Managers like i3 or Hyprland
-
-With tiling window managers the window will be at it's fixed size which is usually okay for the normal user. In tiling WM this doesn't work properly. To fix that you can allow the window to resize by setting a env variable. This will only affect a handful of users and they will know how to handle it.
-
+**Linux/macOS Usage**:
 ```bash
 export WLGATE_RESIZABLE=true
-./path_to_your_bin
+./waveloggate
 ```
+
+**Windows Usage**:
+```cmd
+set WLGATE_RESIZABLE=true
+WavelogGate.exe
+```
+
+#### WLGATE_SLEEP
+**Purpose**: Enables sleeping/snooze functionality for the application
+
+**Use Case**: When set, allows WaveLogGate to enter sleep mode during inactivity, reducing system resource usage. **DANGER** Use with care. It may happen that CAT stops working with this setting.
+
+**Linux/macOS Usage**:
+```bash
+export WLGATE_SLEEP=true
+./waveloggate
+```
+
+**Windows Usage**:
+```cmd
+set WLGATE_SLEEP=true
+WavelogGate.exe
+```
+
+**Note**: Both environment variables are optional and only need to be set when the specific functionality is required.
 
 ## Development
 
