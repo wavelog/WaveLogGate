@@ -199,14 +199,45 @@ Access advanced settings by pressing **Ctrl+Shift+D** in the configuration windo
 
 **Note**: Advanced settings are in beta - restart the application after changes to ensure they're applied correctly.
 
-### Special: Tiling Window Managers like i3 or Hyprland
+### Environment Variables
 
-With tiling window managers the window will be at it's fixed size which is usually okay for the normal user. In tiling WM this doesn't work properly. To fix that you can allow the window to resize by setting a env variable. This will only affect a handful of users and they will know how to handle it.
+WaveLogGate supports two environment variables to control specific behaviors:
 
+#### WLGATE_RESIZABLE
+**Purpose**: Makes the application window resizable instead of fixed size
+
+**Use Case**: Useful for tiling window managers (i3, Hyprland, etc.) or when you need to resize the window manually
+
+**Linux/macOS Usage**:
 ```bash
 export WLGATE_RESIZABLE=true
-./path_to_your_bin
+./waveloggate
 ```
+
+**Windows Usage**:
+```cmd
+set WLGATE_RESIZABLE=true
+WavelogGate.exe
+```
+
+#### WLGATE_SLEEP
+**Purpose**: Enables sleeping/snooze functionality for the application
+
+**Use Case**: When set, allows WaveLogGate to enter sleep mode during inactivity, reducing system resource usage. **DANGER** Use with care. It may happen that CAT stops working with this setting.
+
+**Linux/macOS Usage**:
+```bash
+export WLGATE_SLEEP=true
+./waveloggate
+```
+
+**Windows Usage**:
+```cmd
+set WLGATE_SLEEP=true
+WavelogGate.exe
+```
+
+**Note**: Both environment variables are optional and only need to be set when the specific functionality is required.
 
 ## Development
 
