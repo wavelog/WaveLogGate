@@ -121,14 +121,14 @@ As an example for Icom transceivers like the IC-7300, you can use `rigctld` (Ham
 2. **Start rigctld for IC-7300**:
    ```bash
    # Basic configuration for IC-7300 on USB serial port
-   rigctld -m 306 -r /dev/ttyUSB0 -s 38400 -T localhost -t 4532
+   rigctld -m 3073 -r /dev/ttyUSB0 -s 38400 -T localhost -t 4532
 
    # Windows example (replace COM3 with your actual port)
-   rigctld.exe -m 306 -r COM3 -s 38400 -T localhost -t 4532
+   rigctld.exe -m 3073 -r COM3 -s 38400 -T localhost -t 4532
    ```
 
    **Parameters explained**:
-   - `-m 306`: Model number for - e.g. - Icom IC-7300 (use `rigctl -l` to see all models)
+   - `-m 3073`: Model number for - e.g. - Icom IC-7300 (use `rigctl -l` to see all models)
    - `-r /dev/ttyUSB0`: Serial port device (adjust for your setup / on Windows its COMx)
    - `-s 38400`: Serial baud rate (IC-7300 default is 38400)
    - `-T localhost`: TCP host for rigctld daemon
@@ -139,20 +139,13 @@ As an example for Icom transceivers like the IC-7300, you can use `rigctld` (Ham
    - Host: `127.0.0.1`
    - Port: `4532` (must match rigctld port)
 
-#### Common Hamlib Model Numbers
-- **Icom IC-7300**: `306`
-- **Icom IC-705**: `439`
-- **Icom IC-7610**: `378`
-- **Yaesu FT-891**: `161`
-- **Yaesu FT-991A**: `146`
-
 #### Troubleshooting Hamlib
 ```bash
 # List all supported radios
 rigctl -l
 
 # Test connection (run after rigctld is running)
-rigctl -m 306 -r /dev/ttyUSB0 get_freq
+rigctl -m 3073 -r /dev/ttyUSB0 get_freq
 ```
 
 **Important**: `rigctld` must remain running in the background for WaveLogGate to control your radio.
