@@ -188,17 +188,6 @@ ws.onmessage = (event) => {
 };
 ```
 
-
-## Advanced Settings
-
-Access advanced settings by pressing **Ctrl+Shift+D** in the configuration window:
-
-- **Force Hamlib**: Override FLRig and use Hamlib instead
-- **Disable Power Transfer**: Stop sending power readings to WaveLog
-- **Debug Options**: Additional logging and troubleshooting options
-
-**Note**: Advanced settings are in beta - restart the application after changes to ensure they're applied correctly.
-
 ### Environment Variables
 
 WaveLogGate supports two environment variables to control specific behaviors:
