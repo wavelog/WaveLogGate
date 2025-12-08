@@ -9,6 +9,7 @@ const WebSocket = require('ws');
 // In some cases we need to make the WLgate window resizable (for example for tiling window managers)
 // Default: false
 const resizable = process.env.WLGATE_RESIZABLE === 'true' || false;
+const sleepable = process.env.WLGATE_SLEEP === 'true' || false;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -259,7 +260,9 @@ process.on('SIGINT', () => {
 
 app.on('will-quit', () => {
 	try {
-		powerSaveBlocker.stop(powerSaveBlockerId);
+		if (!sleepable) {
+			powerSaveBlocker.stop(powerSaveBlockerId);
+		}
 	} catch(e) {
 		console.log(e);
 	}
@@ -270,7 +273,9 @@ if (!gotTheLock) {
 } else {
 	startserver();
 	app.whenReady().then(() => {
-		powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+		if (!sleepable) {
+			powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+		}
 		s_mainWindow=createWindow();
 		globalShortcut.register('Control+Shift+I', () => { return false; });
 		app.on('activate', function () {
@@ -633,10 +638,25 @@ function broadcastRadioStatus(radioData) {
 
 async function get_modes() {
 	return new Promise((resolve) => {
-		ipcMain.once('get_info_result', (event, modes) => {
-			resolve(modes);
-		});
-		s_mainWindow.webContents.send('get_info', 'rig.get_modes');
+		// Check which radio type is enabled
+		const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
+
+		if (profile.hamlib_ena) {
+			// For Hamlib, send the command directly
+			ipcMain.once('get_info_result', (event, modes) => {
+				resolve(modes ?? ['CW','LSB','USB']);
+			});
+			s_mainWindow.webContents.send('get_info', 'rig.get_modes');
+		} else if (profile.flrig_ena) {
+			// For FLRig, use the existing method
+			ipcMain.once('get_info_result', (event, modes) => {
+				resolve(modes ?? ['CW','LSB','USB']);
+			});
+			s_mainWindow.webContents.send('get_info', 'rig.get_modes');
+		} else {
+			// No radio control enabled, return default modes
+			resolve(['CW','LSB','USB']);
+		}
 	});
 }
 
@@ -719,7 +739,7 @@ async function settrx(qrg, mode = '') {
 		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_port }, () => {
 			client.write("F " + to.qrg + "\n");
 			if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
-				client.write("M " + to.mode + "\n-1");
+				client.write("M " + to.mode + " 0\n");
 			}
 			client.end();
 		});
