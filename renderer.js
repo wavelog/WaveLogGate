@@ -320,11 +320,7 @@ async function getInfo(which) {
 		return new Promise((resolve, reject) => {
 			if (commands[which]) {
 				const client = net.createConnection({ host, port }, () => {
-					if (which === 'rig.get_modes') {
 						client.write(commands[which] + "\n");
-					} else {
-						client.write(commands[which]);
-					}
 				});
 
 				// Track the connection for cleanup
