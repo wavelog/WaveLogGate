@@ -19,6 +19,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 
 let powerSaveBlockerId;
 let s_mainWindow;
+let certInstallWindow;
 let msgbacklog=[];
 let qsyServer; // Dual-mode HTTP/HTTPS server for QSY
 let currentCAT=null;
@@ -164,6 +165,12 @@ ipcMain.on("get_cert_info", async (event) => {
 		platform: process.platform,
 		hasCert: fs.existsSync(certPath)
 	};
+});
+
+ipcMain.on("close_cert_install_window", async () => {
+	if (certInstallWindow && !certInstallWindow.isDestroyed()) {
+		certInstallWindow.close();
+	}
 });
 
 function cleanupConnections() {
@@ -829,6 +836,41 @@ function createRequestHandler(req, res) {
 	}
 }
 
+function showCertInstallWindow() {
+	// Close existing window if open
+	if (certInstallWindow && !certInstallWindow.isDestroyed()) {
+		certInstallWindow.focus();
+		return;
+	}
+
+	certInstallWindow = new BrowserWindow({
+		width: 600,
+		height: 500,
+		resizable: false,
+		parent: s_mainWindow,
+		modal: true,
+		autoHideMenuBar: app.isPackaged,
+		webPreferences: {
+			contextIsolation: false,
+			nodeIntegration: true,
+			devTools: !app.isPackaged,
+			enableRemoteModule: true,
+			preload: path.join(__dirname, 'preload.js')
+		}
+	});
+
+	if (app.isPackaged) {
+		certInstallWindow.setMenu(null);
+	}
+
+	certInstallWindow.loadFile('cert-install.html');
+	certInstallWindow.setTitle('WaveLogGate - SSL Certificate Installation');
+
+	certInstallWindow.on('closed', () => {
+		certInstallWindow = null;
+	});
+}
+
 function startserver() {
 	try {
 		// Setup SSL certificates
@@ -840,9 +882,7 @@ function startserver() {
 		if (certResult.success && certResult.newlyGenerated) {
 			// Schedule prompt after window is ready
 			setTimeout(() => {
-				if (s_mainWindow && !s_mainWindow.isDestroyed()) {
-					s_mainWindow.webContents.send('prompt_cert_install');
-				}
+				showCertInstallWindow();
 			}, 2000);
 		}
 

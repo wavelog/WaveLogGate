@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>SSL Certificate Installation</title>
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+		body {
+			background-color: #303030;
+			color: #e0e0e0;
+			padding: 20px;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+			margin: 0;
+		}
+		.container {
+			max-width: 550px;
+			margin: 0 auto;
+		}
+		.card {
+			background-color: #404040;
+			border: 1px solid #505050;
+			border-radius: 8px;
+			overflow: hidden;
+		}
+		.card-header {
+			background-color: #505050;
+			padding: 15px 20px;
+			border-bottom: 1px solid #606060;
+		}
+		.card-header h5 {
+			margin: 0;
+			font-size: 18px;
+			font-weight: 600;
+		}
+		.card-body {
+			padding: 20px;
+		}
+		.code-block {
+			background-color: #1a1a1a;
+			padding: 12px;
+			border-radius: 4px;
+			font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+			font-size: 12px;
+			white-space: pre-wrap;
+			word-break: break-all;
+			max-height: 120px;
+			overflow-y: auto;
+			margin-top: 8px;
+		}
+		hr {
+			border: none;
+			border-top: 1px solid #505050;
+			margin: 20px 0;
+		}
+		.btn-group {
+			display: flex;
+			gap: 10px;
+			justify-content: space-between;
+		}
+		.btn {
+			padding: 10px 20px;
+			border: none;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 500;
+			transition: all 0.2s;
+		}
+		.btn:disabled {
+			opacity: 0.6;
+			cursor: not-allowed;
+		}
+		.btn-primary {
+			background-color: #4a90d9;
+			color: white;
+		}
+		.btn-primary:hover:not(:disabled) {
+			background-color: #357abd;
+		}
+		.btn-secondary {
+			background-color: #6c757d;
+			color: white;
+		}
+		.btn-secondary:hover {
+			background-color: #5a6268;
+		}
+		.result-box {
+			display: none;
+			margin-top: 20px;
+			padding: 15px;
+			border-radius: 6px;
+		}
+		.result-box.show {
+			display: block;
+		}
+		.result-box.success {
+			background-color: #1e4620;
+			border: 1px solid #2d6e31;
+		}
+		.result-box.warning {
+			background-color: #5a4a20;
+			border: 1px solid #8a7330;
+		}
+		.cert-icon {
+			font-size: 48px;
+			text-align: center;
+			margin-bottom: 15px;
+		}
+		.alert-info {
+			background-color: #2a3a4a;
+			border: 1px solid #3a5a7a;
+			padding: 12px 15px;
+			border-radius: 6px;
+			margin: 15px 0;
+		}
+		.alert-info strong {
+			display: block;
+			margin-bottom: 5px;
+		}
+		small {
+			display: block;
+			margin-top: 20px;
+			color: #888;
+			font-size: 12px;
+		}
+		code {
+			background-color: #1a1a1a;
+			padding: 2px 6px;
+			border-radius: 3px;
+			font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+			font-size: 12px;
+		}
+		.spinner {
+			display: inline-block;
+			width: 14px;
+			height: 14px;
+			border: 2px solid #ffffff;
+			border-top-color: transparent;
+			border-radius: 50%;
+			animation: spin 0.6s linear infinite;
+			margin-right: 8px;
+		}
+		.spinner.d-none {
+			display: none;
+		}
+		@keyframes spin {
+			to { transform: rotate(360deg); }
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="card">
+			<div class="card-header">
+				<h5>SSL Certificate Installation</h5>
+			</div>
+			<div class="card-body">
+				<div class="cert-icon">🔐</div>
+
+				<p>WaveLogGate has generated a self-signed SSL certificate for HTTPS support.</p>
+
+				<p><strong>Why is this needed?</strong><br>
+				When WaveLog is accessed via <code>https://</code>, browsers require a valid SSL certificate for local connections.
+				WaveLogGate generates its own certificate, but it must be installed in your system's trust store.</p>
+
+				<div class="alert-info">
+					<strong>Certificate location:</strong>
+					<div class="code-block" id="certPath">Loading...</div>
+				</div>
+
+				<hr>
+
+				<div class="btn-group">
+					<button id="closeBtn" class="btn btn-secondary" style="display: none;">Close</button>
+					<button id="skipBtn" class="btn btn-secondary">Do This Later</button>
+					<button id="installBtn" class="btn btn-primary">
+						<span class="spinner d-none" id="spinner"></span>
+						<span id="btnText">Install Certificate</span>
+					</button>
+				</div>
+
+				<div id="resultBox" class="result-box"></div>
+			</div>
+		</div>
+
+		<small>
+			<strong>Note:</strong> After installation, you may need to restart Safari for changes to take effect.
+		</small>
+	</div>
+
+	<script>
+		const { ipcRenderer } = require('electron');
+
+		document.addEventListener('DOMContentLoaded', function() {
+			const installBtn = document.getElementById('installBtn');
+			const closeBtn = document.getElementById('closeBtn');
+			const skipBtn = document.getElementById('skipBtn');
+			const certPathEl = document.getElementById('certPath');
+			const resultBox = document.getElementById('resultBox');
+			const spinner = document.getElementById('spinner');
+			const btnText = document.getElementById('btnText');
+
+			// Get certificate info
+			try {
+				const certInfo = ipcRenderer.sendSync('get_cert_info');
+				certPathEl.textContent = certInfo.certPath || 'Unknown';
+			} catch (error) {
+				certPathEl.textContent = 'Error loading certificate info';
+				console.error('Error getting cert info:', error);
+			}
+
+			// Install button click
+			installBtn.addEventListener('click', function() {
+				installBtn.disabled = true;
+				spinner.classList.remove('d-none');
+				btnText.textContent = 'Installing...';
+				resultBox.className = 'result-box';
+				resultBox.innerHTML = '';
+
+				// Perform installation
+				setTimeout(function() {
+					try {
+						const result = ipcRenderer.sendSync('install_ca_cert');
+						showResult(result);
+					} catch (error) {
+						showResult({
+							success: false,
+							message: 'Error: ' + error.message
+						});
+					}
+
+					spinner.classList.add('d-none');
+				}, 500);
+			});
+
+			// Skip button click
+			skipBtn.addEventListener('click', function() {
+				try {
+					ipcRenderer.send('close_cert_install_window');
+				} catch (error) {
+					window.close();
+				}
+			});
+
+			// Close button click
+			closeBtn.addEventListener('click', function() {
+				try {
+					ipcRenderer.send('close_cert_install_window');
+				} catch (error) {
+					window.close();
+				}
+			});
+
+			function showResult(result) {
+				resultBox.classList.add('show');
+
+				// Hide install and skip buttons, show close button
+				installBtn.style.display = 'none';
+				skipBtn.style.display = 'none';
+				closeBtn.style.display = 'inline-block';
+
+				if (result.success) {
+					resultBox.classList.add('success');
+					resultBox.innerHTML =
+						'<strong>✓ Success!</strong><br><br>' +
+						'Certificate installed successfully! Safari and other browsers should now trust the WaveLogGate HTTPS connection.<br><br>' +
+						'<em>Please restart Safari for the changes to take effect.</em>';
+				} else {
+					resultBox.classList.add('warning');
+					const message = (result.message || 'Unknown error').replace(/\n/g, '<br>');
+					resultBox.innerHTML =
+						'<strong>⚠ Automatic Installation Failed</strong><br><br>' +
+						message + '<br><br>' +
+						'<em>You can close this window and install manually later if needed.</em>';
+				}
+			}
+		});
+	</script>
+</body>
+</html>
