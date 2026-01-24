@@ -26,6 +26,9 @@ let currentCAT=null;
 var WServer;
 let wsServer;
 let wsClients = new Set();
+let wssServer; // Secure WebSocket server
+let wssClients = new Set(); // Secure WebSocket clients
+let wssHttpsServer; // HTTPS server for secure WebSocket
 let isShuttingDown = false;
 let activeConnections = new Set(); // Track active TCP connections
 let activeHttpRequests = new Set(); // Track active HTTP requests for cancellation
@@ -245,6 +248,19 @@ function shutdownApplication() {
             });
             wsClients.clear();
             wsServer.close();
+        }
+        if (wssServer) {
+            // Close all Secure WebSocket client connections
+            wssClients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.close();
+                }
+            });
+            wssClients.clear();
+            wssServer.close();
+            if (wssHttpsServer) {
+                wssHttpsServer.close();
+            }
         }
     } catch (error) {
         console.error('Error during server shutdown:', error);
@@ -967,6 +983,9 @@ function startserver() {
 
 		// Start WebSocket server
 		startWebSocketServer();
+
+		// Start Secure WebSocket server
+		startSecureWebSocketServer();
 	} catch(e) {
 		tomsg('Some other Tool blocks Port 2333 or 54321. Stop it, and restart this');
 	}
@@ -1006,6 +1025,56 @@ function startWebSocketServer() {
 	}
 }
 
+function startSecureWebSocketServer() {
+	if (!certPaths.key || !certPaths.cert) {
+		return;
+	}
+
+	try {
+		// Create HTTPS server first
+		wssHttpsServer = https.createServer({
+			key: certPaths.key,
+			cert: certPaths.cert
+		});
+
+		// Listen on port 54323
+		wssHttpsServer.listen(54323);
+
+		// Attach WebSocket server to the HTTPS server
+		wssServer = new WebSocket.Server({ server: wssHttpsServer });
+
+		wssServer.on('connection', (ws) => {
+			wssClients.add(ws);
+
+			ws.on('close', () => {
+				wssClients.delete(ws);
+			});
+
+			ws.on('error', (error) => {
+				wssClients.delete(ws);
+			});
+
+			// Send current radio status on connection
+			ws.send(JSON.stringify({
+				type: 'welcome',
+				message: 'Connected to WaveLogGate Secure WebSocket server'
+			}));
+			broadcastRadioStatus(currentCAT);
+		});
+
+		wssServer.on('error', (error) => {
+			// Silent error handling
+		});
+
+		wssHttpsServer.on('error', (error) => {
+			// Silent error handling
+		});
+
+	} catch(e) {
+		// Silent error handling
+	}
+}
+
 function broadcastRadioStatus(radioData) {
 	currentCAT=radioData;
 	let message = {
@@ -1022,7 +1091,14 @@ function broadcastRadioStatus(radioData) {
 	}
 
 	const messageStr = JSON.stringify(message);
+	// Broadcast to regular WebSocket clients
 	wsClients.forEach((client) => {
+		if (client.readyState === WebSocket.OPEN) {
+			client.send(messageStr);
+		}
+	});
+	// Broadcast to secure WebSocket clients
+	wssClients.forEach((client) => {
 		if (client.readyState === WebSocket.OPEN) {
 			client.send(messageStr);
 		}
