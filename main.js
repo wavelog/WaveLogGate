@@ -7,7 +7,7 @@ const xml = require("xml2js");
 const net = require('net');
 const WebSocket = require('ws');
 const fs = require('fs');
-const selfsigned = require('selfsigned');
+const forge = require('node-forge');
 const httpolyglot = require('httpolyglot');
 
 // In some cases we need to make the WLgate window resizable (for example for tiling window managers)
@@ -616,26 +616,68 @@ function setupCertificates() {
 			fs.mkdirSync(certDir, { recursive: true });
 		}
 
-		// Generate self-signed certificate
-		const attrs = [{ name: 'commonName', value: '127.0.0.1' }];
-		const certs = selfsigned.generate(attrs, {
-			days: 3650, // 10 years
-			altNames: [
-				{ type: 2, value: 'localhost' },
-				{ type: 2, value: '127.0.0.1' },
-				{ type: 2, value: '::1' },
-				{ type: 7, ip: '127.0.0.1' },
-				{ type: 7, ip: '::1' }
-			]
-		});
+		// Generate RSA key pair
+		const keys = forge.pki.rsa.generateKeyPair(2048);
+
+		// Create certificate
+		const cert = forge.pki.createCertificate();
+		cert.publicKey = keys.publicKey;
+		cert.serialNumber = '01';
+		cert.validity.notBefore = new Date();
+		cert.validity.notAfter = new Date();
+		cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10); // 10 years
+
+		// Set subject and issuer (self-signed)
+		const attrs = [{
+			name: 'commonName',
+			value: '127.0.0.1'
+		}];
+		cert.setSubject(attrs);
+		cert.setIssuer(attrs);
+
+		// Add extensions including SANs
+		cert.setExtensions([{
+			name: 'basicConstraints',
+			cA: true
+		}, {
+			name: 'keyUsage',
+			keyCertSign: true,
+			digitalSignature: true,
+			nonRepudiation: true,
+			keyEncipherment: true,
+			dataEncipherment: true
+		}, {
+			name: 'extKeyUsage',
+			serverAuth: true,
+			clientAuth: true
+		}, {
+			name: 'subjectAltName',
+			altNames: [{
+				type: 7, // IP address
+				ip: '127.0.0.1'
+			}, {
+				type: 2, // DNS name
+				value: 'localhost'
+			}, {
+				type: 7, // IPv6 address
+				ip: '::1'
+			}]
+		}]);
+
+		// Self-sign the certificate
+		cert.sign(keys.privateKey);
+
+		// Convert to PEM format
+		const certPem = forge.pki.certificateToPem(cert);
+		const keyPem = forge.pki.privateKeyToPem(keys.privateKey);
 
 		// Save certificates
-		fs.writeFileSync(keyPath, certs.private);
-		fs.writeFileSync(certPath, certs.cert);
+		fs.writeFileSync(keyPath, keyPem);
+		fs.writeFileSync(certPath, certPem);
 
 		certPaths = {
-			key: certs.private,
-			cert: certs.cert
+			key: keyPem,
+			cert: certPem
 		};
 
 		console.log('Generated new SSL certificates');
