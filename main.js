@@ -2,9 +2,13 @@ const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker } = re
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
+const https = require('https');
 const xml = require("xml2js");
 const net = require('net');
 const WebSocket = require('ws');
+const fs = require('fs');
+const selfsigned = require('selfsigned');
+const httpolyglot = require('httpolyglot');
 
 // In some cases we need to make the WLgate window resizable (for example for tiling window managers)
 // Default: false
@@ -16,7 +20,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 let powerSaveBlockerId;
 let s_mainWindow;
 let msgbacklog=[];
-let httpServer;
+let qsyServer; // Dual-mode HTTP/HTTPS server for QSY
 let currentCAT=null;
 var WServer;
 let wsServer;
@@ -24,6 +28,12 @@ let wsClients = new Set();
 let isShuttingDown = false;
 let activeConnections = new Set(); // Track active TCP connections
 let activeHttpRequests = new Set(); // Track active HTTP requests for cancellation
+
+// Certificate paths for HTTPS server
+let certPaths = {
+	key: null,
+	cert: null
+};
 
 const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rst_rcvd:2>33 <qso_date:8>20240110 <time_on:6>051855 <qso_date_off:8>20240110 <time_off:6>051855 <band:3>40m <freq:8>7.155783 <station_callsign:5>TE1ST <my_gridsquare:6>JO30OO <eor>';
 
@@ -132,6 +142,12 @@ ipcMain.on("radio_status_update", async (event,arg) => {
 	event.returnValue=true;
 });
 
+ipcMain.on("get_ca_cert", async (event) => {
+	// Return the CA certificate for display/installation
+	const caCert = getCaCertificate();
+	event.returnValue = caCert;
+});
+
 function cleanupConnections() {
     console.log('Cleaning up active TCP connections...');
 
@@ -190,9 +206,9 @@ function shutdownApplication() {
             console.log('Closing UDP server...');
             WServer.close();
         }
-        if (httpServer) {
-            console.log('Closing HTTP server...');
-            httpServer.close();
+        if (qsyServer) {
+            console.log('Closing QSY server...');
+            qsyServer.close();
         }
         if (wsServer) {
             console.log('Closing WebSocket server and clients...');
@@ -260,7 +276,7 @@ process.on('SIGINT', () => {
 
 app.on('will-quit', () => {
 	try {
-		if (!sleepable) {
+		if (!sleepable && powerSaveBlockerId !== undefined) {
 			powerSaveBlocker.stop(powerSaveBlockerId);
 		}
 	} catch(e) {
@@ -556,20 +572,147 @@ function tomsg(msg) {
 	}
 }
 
+// Generate or load self-signed certificate for HTTPS server
+function setupCertificates() {
+	const userDataPath = app.getPath('userData');
+	const certDir = path.join(userDataPath, 'certs');
+
+	// Check if certificates already exist
+	const keyPath = path.join(certDir, 'server.key');
+	const certPath = path.join(certDir, 'server.crt');
+
+	if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+		// Load existing certificates
+		certPaths = {
+			key: fs.readFileSync(keyPath),
+			cert: fs.readFileSync(certPath)
+		};
+		console.log('Using existing SSL certificates');
+		return true;
+	}
+
+	// Generate new certificates
+	try {
+		// Create cert directory if it doesn't exist
+		if (!fs.existsSync(certDir)) {
+			fs.mkdirSync(certDir, { recursive: true });
+		}
+
+		// Generate self-signed certificate
+		const attrs = [{ name: 'commonName', value: 'WaveLogGate' }];
+		const certs = selfsigned.generate(attrs, {
+			days: 3650, // 10 years
+			altNames: [
+				{ type: 2, value: 'localhost' },
+				{ type: 2, value: '127.0.0.1' },
+				{ type: 2, value: '::1' },
+				{ type: 7, ip: '127.0.0.1' },
+				{ type: 7, ip: '::1' }
+			]
+		});
+
+		// Save certificates
+		fs.writeFileSync(keyPath, certs.private);
+		fs.writeFileSync(certPath, certs.cert);
+
+		certPaths = {
+			key: certs.private,
+			cert: certs.cert
+		};
+
+		console.log('Generated new SSL certificates');
+		return true;
+	} catch (error) {
+		console.error('Failed to generate certificates:', error);
+		tomsg('Warning: Failed to generate SSL certificates. HTTPS server will not be available.');
+		return false;
+	}
+}
+
+// Get certificate for user installation
+function getCaCertificate() {
+	const userDataPath = app.getPath('userData');
+	const certPath = path.join(userDataPath, 'certs', 'server.crt');
+
+	if (fs.existsSync(certPath)) {
+		return fs.readFileSync(certPath, 'utf8');
+	}
+	return null;
+}
+
+// Request handler for both HTTP and HTTPS servers
+function createRequestHandler(req, res) {
+	// Handle CORS preflight requests (OPTIONS)
+	if (req.method === 'OPTIONS') {
+		res.setHeader('Access-Control-Allow-Origin', '*');
+		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+		res.setHeader('Access-Control-Max-Age', '86400');
+		res.writeHead(204);
+		res.end();
+		return;
+	}
+
+	// Handle QSY requests
+	res.setHeader('Access-Control-Allow-Origin', '*');
+	res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+	res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+
+	const parts = req.url.substr(1).split('/');
+	const qrg = parts[0];
+	const mode = parts[1] || '';
+
+	if (Number.isInteger(Number.parseInt(qrg))) {
+		settrx(qrg,mode);
+		res.writeHead(200, {'Content-Type': 'text/plain'});
+		res.end('OK');
+	} else {
+		res.writeHead(400, {'Content-Type': 'text/plain'});
+		res.end('Invalid frequency');
+	}
+}
+
 function startserver() {
 	try {
+		// Setup SSL certificates
+		const hasCerts = setupCertificates();
+
 		tomsg('Waiting for QSO / Listening on UDP 2333');
-		httpServer = http.createServer(function (req, res) {
-			res.setHeader('Access-Control-Allow-Origin', '*');
-			res.writeHead(200, {'Content-Type': 'text/plain'});
-			res.end('');
-			const parts = req.url.substr(1).split('/');
-			const qrg = parts[0];
-			const mode = parts[1] || '';
-			if (Number.isInteger(Number.parseInt(qrg))) {
-				settrx(qrg,mode);
-			}
-		}).listen(54321);
+
+		// Create dual-mode HTTP/HTTPS server on port 54321
+		if (hasCerts && certPaths.key && certPaths.cert) {
+			// Create httpolyglot server (handles both HTTP and HTTPS on same port)
+			const serverOptions = {
+				key: certPaths.key,
+				cert: certPaths.cert,
+				minVersion: 'TLSv1.2'
+			};
+
+			qsyServer = httpolyglot.createServer(serverOptions, createRequestHandler);
+			qsyServer.on('error', (err) => {
+				if (err.code === 'EADDRINUSE') {
+					console.error('QSY server port 54321 already in use');
+				} else {
+					console.error('QSY server error:', err);
+				}
+			});
+			qsyServer.listen(54321, () => {
+				console.log('Dual-mode HTTP/HTTPS QSY server listening on port 54321');
+			});
+		} else {
+			// Fallback to HTTP-only if certificates are not available
+			qsyServer = http.createServer(createRequestHandler);
+			qsyServer.on('error', (err) => {
+				if (err.code === 'EADDRINUSE') {
+					console.error('QSY server port 54321 already in use');
+				} else {
+					console.error('QSY server error:', err);
+				}
+			});
+			qsyServer.listen(54321, () => {
+				console.log('HTTP-only QSY server listening on port 54321');
+			});
+		}
 
 		// Start WebSocket server
 		startWebSocketServer();
