@@ -180,6 +180,7 @@
 						<span class="spinner d-none" id="spinner"></span>
 						<span id="btnText">Install Certificate</span>
 					</button>
+					<button id="copyBtn" class="btn btn-primary" style="display: none;">Copy Command</button>
 				</div>
 
 				<div id="resultBox" class="result-box"></div>
@@ -198,10 +199,12 @@
 			const installBtn = document.getElementById('installBtn');
 			const closeBtn = document.getElementById('closeBtn');
 			const skipBtn = document.getElementById('skipBtn');
+			const copyBtn = document.getElementById('copyBtn');
 			const certPathEl = document.getElementById('certPath');
 			const resultBox = document.getElementById('resultBox');
 			const spinner = document.getElementById('spinner');
 			const btnText = document.getElementById('btnText');
+			let manualCommand = '';
 
 			// Get certificate info
 			try {
@@ -266,17 +269,50 @@
 					resultBox.classList.add('success');
 					resultBox.innerHTML =
 						'<strong>✓ Success!</strong><br><br>' +
-						'Certificate installed successfully! Safari and other browsers should now trust the WaveLogGate HTTPS connection.<br><br>' +
-						'<em>Please restart Safari for the changes to take effect.</em>';
+						'Certificate installed successfully! Chrome and Safari should now trust the WaveLogGate HTTPS connection.<br><br>' +
+						'<em>Please restart your browser for the changes to take effect.</em>';
+					copyBtn.style.display = 'none';
 				} else {
 					resultBox.classList.add('warning');
-					const message = (result.message || 'Unknown error').replace(/\n/g, '<br>');
-					resultBox.innerHTML =
-						'<strong>⚠ Automatic Installation Failed</strong><br><br>' +
-						message + '<br><br>' +
-						'<em>You can close this window and install manually later if needed.</em>';
+					manualCommand = result.command || '';
+
+					let html = '<strong>⚠ Automatic Installation Failed</strong><br><br>';
+
+					if (manualCommand) {
+						html += result.message.replace(/\n/g, '<br>') + '<br><br>';
+						html += '<div class="code-block" style="max-height: 150px;">' + escapeHtml(manualCommand) + '</div><br>';
+						copyBtn.style.display = 'inline-block';
+					} else {
+						html += (result.message || 'Unknown error').replace(/\n/g, '<br>') + '<br><br>';
+						copyBtn.style.display = 'none';
+					}
+
+					html += '<em>You can close this window and install manually later if needed.</em>';
+					resultBox.innerHTML = html;
 				}
 			}
+
+			// Escape HTML to prevent XSS
+			function escapeHtml(text) {
+				const div = document.createElement('div');
+				div.textContent = text;
+				return div.innerHTML;
+			}
+
+			// Copy button click handler
+			copyBtn.addEventListener('click', function() {
+				if (manualCommand) {
+					navigator.clipboard.writeText(manualCommand).then(function() {
+						const originalText = copyBtn.textContent;
+						copyBtn.textContent = 'Copied!';
+						setTimeout(function() {
+							copyBtn.textContent = originalText;
+						}, 2000);
+					}).catch(function(err) {
+						console.error('Failed to copy:', err);
+					});
+				}
+			});
 		});
 	</script>
 </body>

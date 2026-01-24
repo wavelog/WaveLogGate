@@ -645,14 +645,11 @@ function setupCertificates() {
 		// Add extensions including SANs
 		cert.setExtensions([{
 			name: 'basicConstraints',
-			cA: true
+			cA: false
 		}, {
 			name: 'keyUsage',
-			keyCertSign: true,
 			digitalSignature: true,
-			nonRepudiation: true,
-			keyEncipherment: true,
-			dataEncipherment: true
+			keyEncipherment: true
 		}, {
 			name: 'extKeyUsage',
 			serverAuth: true,
@@ -725,30 +722,37 @@ async function installCertificate() {
 
 	try {
 		if (platform === 'darwin') {
-			// macOS - try to install in user keychain (no sudo required)
-			// Then provide instruction for system keychain
+			// macOS - Use AppleScript to run with admin privileges (shows native password dialog)
 			try {
-				// Try user keychain first (no sudo needed)
-				execSync(`security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db "${certPath}"`, { stdio: 'ignore' });
-				console.log('Certificate installed in user keychain');
+				// Escape the certificate path for shell and AppleScript
+				const escapedCertPath = certPath.replace(/'/g, "'\\''");
+
+				// Use AppleScript to execute with administrator privileges
+				// This shows the native macOS authentication dialog
+				const appleScript = `
+					do shell script "security add-trusted-cert -d -p ssl -p basic -k /Library/Keychains/System.keychain '${escapedCertPath}'" with administrator privileges
+				`;
+
+				execSync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, { stdio: 'ignore' });
+				console.log('Certificate installed in System keychain via AppleScript');
 				return {
 					success: true,
-					message: 'Certificate installed in user keychain. Safari should now trust it.',
+					message: 'Certificate installed in System keychain. Chrome and Safari should now trust it after restart.',
 					manual: false
 				};
-			} catch (userError) {
-				// Fallback instructions for system keychain
-				console.log('Could not install in user keychain, providing manual instructions');
+			} catch (sysError) {
+				console.log('AppleScript installation failed:', sysError.message);
 				return {
 					success: false,
-					message: `Automatic installation failed. Please run this command in Terminal:\n\nsudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`,
+					message: `Installation was cancelled or failed.\n\nPlease try again and enter your macOS password when prompted.\n\nIf you prefer manual installation, run this command in Terminal:\n\nsudo security add-trusted-cert -d -p ssl -p basic -k /Library/Keychains/System.keychain "${certPath}"`,
 					manual: true,
-					command: `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`
+					command: `sudo security add-trusted-cert -d -p ssl -p basic -k /Library/Keychains/System.keychain "${certPath}"`
 				};
 			}
 		} else if (platform === 'win32') {
-			// Windows - use certutil (may require admin)
+			// Windows - try to install with elevation prompt
 			try {
+				// Try direct install first (if already running as admin)
 				execSync(`certutil -addstore -f Root "${certPath}"`, { stdio: 'ignore' });
 				console.log('Certificate installed in Windows trust store');
 				return {
@@ -757,22 +761,62 @@ async function installCertificate() {
 					manual: false
 				};
 			} catch (winError) {
-				return {
-					success: false,
-					message: `Installation requires Administrator privileges. Please run PowerShell as Administrator and execute:\n\ncertutil -addstore -f Root "${certPath}"`,
-					manual: true,
-					command: `certutil -addstore -f Root "${certPath}"`
-				};
+				// Not running as admin - try PowerShell elevation
+				try {
+					const psScript = `Start-Process powershell -ArgumentList '-Command', 'certutil -addstore -f Root \\"${certPath}\\"' -Verb RunAs`;
+					execSync(`powershell -Command "${psScript}"`, { stdio: 'ignore' });
+					// Give it a moment for UAC dialog
+					await new Promise(resolve => setTimeout(resolve, 2000));
+					return {
+						success: true,
+						message: 'Certificate installation prompt shown. Please approve the UAC prompt and restart your browser.',
+						manual: false
+					};
+				} catch (elevateError) {
+					return {
+						success: false,
+						message: `Installation requires Administrator privileges. Please run PowerShell as Administrator and execute:\n\ncertutil -addstore -f Root "${certPath}"`,
+						manual: true,
+						command: `certutil -addstore -f Root "${certPath}"`
+					};
+				}
 			}
 		} else if (platform === 'linux') {
-			// Linux - varies by distro, provide instructions
-			const distroInfo = getLinuxDistro();
-			return {
-				success: false,
-				message: `Linux certificate installation varies by distribution.\n\nFor Debian/Ubuntu:\nsudo cp "${certPath}" /usr/local/share/ca-certificates/\nsudo update-ca-certificates\n\nFor Fedora/RHEL:\nsudo cp "${certPath}" /etc/pki/ca-trust/source/anchors/\nsudo update-ca-trust`,
-				manual: true,
-				distro: distroInfo
-			};
+			// Linux - try pkexec for GUI systems, fall back to manual instructions
+			try {
+				// Try pkexec (polkit) for GUI password prompt
+				const distroInfo = getLinuxDistro();
+
+				// Try Debian/Ubuntu approach first
+				if (fs.existsSync('/usr/local/share/ca-certificates/')) {
+					const installScript = `cp "${certPath}" /usr/local/share/ca-certificates/waveloggate.crt && update-ca-certificates`;
+					execSync(`pkexec sh -c '${installScript}'`, { stdio: 'ignore' });
+					return {
+						success: true,
+						message: 'Certificate installed. Please restart your browser.',
+						manual: false
+					};
+				}
+				// Try Fedora/RHEL approach
+				else if (fs.existsSync('/etc/pki/ca-trust/source/anchors/')) {
+					const installScript = `cp "${certPath}" /etc/pki/ca-trust/source/anchors/waveloggate.crt && update-ca-trust`;
+					execSync(`pkexec sh -c '${installScript}'`, { stdio: 'ignore' });
+					return {
+						success: true,
+						message: 'Certificate installed. Please restart your browser.',
+						manual: false
+					};
+				} else {
+					throw new Error('Unknown certificate location');
+				}
+			} catch (linuxError) {
+				// Fall back to manual instructions
+				return {
+					success: false,
+					message: `Automatic installation failed. Please run these commands in Terminal:\n\nDebian/Ubuntu:\nsudo cp "${certPath}" /usr/local/share/ca-certificates/waveloggate.crt\nsudo update-ca-certificates\n\nFedora/RHEL:\nsudo cp "${certPath}" /etc/pki/ca-trust/source/anchors/waveloggate.crt\nsudo update-ca-trust`,
+					manual: true
+				};
+			}
 		}
 
 		return {
