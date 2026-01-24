@@ -148,6 +148,11 @@ $(document).ready(function() {
 		cleanup();
 	});
 
+	// Handle certificate installation prompt
+	ipcRenderer.on('prompt_cert_install', () => {
+		showCertInstallPrompt();
+	});
+
 	// Dropdown change handler
 	$('#radio_type').change(function() {
 		updateRadioFields();
@@ -481,6 +486,86 @@ function cleanup() {
 
 	// Clean up TCP connections
 	cleanupConnections();
+}
+
+function showCertInstallPrompt() {
+	const certInfo = ipcRenderer.sendSync('get_cert_info');
+
+	let message = `WaveLogGate has generated a self-signed SSL certificate for HTTPS support.\n\n`;
+	message += `To allow Safari/ browsers to connect to WaveLogGate via HTTPS without warnings, `;
+	message += `the certificate needs to be installed in your system's trust store.\n\n`;
+	message += `Certificate location:\n${certInfo.certPath}\n\n`;
+	message += `Would you like to install the certificate now?`;
+
+	// Use Bootstrap modal for better UI
+	const modalHtml = `
+<div class="modal fade" id="certInstallModal" tabindex="-1" role="dialog">
+	<div class="modal-dialog" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">Install SSL Certificate</h5>
+			</div>
+			<div class="modal-body">
+				<p>WaveLogGate has generated a self-signed SSL certificate for HTTPS support.</p>
+				<p>To allow browsers (especially Safari) to connect to WaveLogGate via HTTPS without security warnings, the certificate needs to be installed in your system's trust store.</p>
+				<p><strong>Certificate location:</strong><br><code>${certInfo.certPath}</code></p>
+				<p>Would you like to install the certificate now?</p>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-dismiss="modal">Later</button>
+				<button type="button" class="btn btn-primary" id="installCertBtn">Install Certificate</button>
+			</div>
+		</div>
+	</div>
+</div>`;
+
+	// Remove existing modal if present
+	$('#certInstallModal').remove();
+
+	// Add modal to body
+	$('body').append(modalHtml);
+
+	// Show modal
+	$('#certInstallModal').modal('show');
+
+	// Handle install button click
+	$('#installCertBtn').one('click', async () => {
+		$('#installCertBtn').prop('disabled', true).text('Installing...');
+
+		const result = ipcRenderer.sendSync('install_ca_cert');
+
+		$('#certInstallModal').modal('hide');
+
+		// Show result alert
+		if (result.success) {
+			showAlert('success', 'Certificate installed successfully! Safari and other browsers should now trust the WaveLogGate HTTPS connection.');
+		} else {
+			let alertMsg = '<strong>Automatic installation failed.</strong><br><br>';
+			alertMsg += result.message.replace(/\n/g, '<br>');
+			showAlert('warning', alertMsg);
+		}
+	});
+}
+
+function showAlert(type, message) {
+	const alertClass = type === 'success' ? 'alert-success' : type === 'warning' ? 'alert-warning' : 'alert-info';
+	const alertHtml = `
+<div class="alert ${alertClass} alert-dismissible fade show mt-2" role="alert">
+	${message}
+	<button type="button" class="close" data-dismiss="alert" aria-label="Close">
+		<span aria-hidden="true">&times;</span>
+	</button>
+</div>`;
+
+	// Add to the status tab's log div
+	$('#log').prepend(alertHtml);
+
+	// Auto-hide after 10 seconds for success messages
+	if (type === 'success') {
+		setTimeout(() => {
+			$('#log .alert').first().alert('close');
+		}, 10000);
+	}
 }
 
 function updateUtcTime() {

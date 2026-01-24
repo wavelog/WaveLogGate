@@ -148,6 +148,24 @@ ipcMain.on("get_ca_cert", async (event) => {
 	event.returnValue = caCert;
 });
 
+ipcMain.on("install_ca_cert", async (event) => {
+	// Attempt to install the CA certificate
+	const result = await installCertificate();
+	event.returnValue = result;
+});
+
+ipcMain.on("get_cert_info", async (event) => {
+	// Return certificate installation info for the UI
+	const userDataPath = app.getPath('userData');
+	const certPath = path.join(userDataPath, 'certs', 'server.crt');
+
+	event.returnValue = {
+		certPath: certPath,
+		platform: process.platform,
+		hasCert: fs.existsSync(certPath)
+	};
+});
+
 function cleanupConnections() {
     console.log('Cleaning up active TCP connections...');
 
@@ -588,7 +606,7 @@ function setupCertificates() {
 			cert: fs.readFileSync(certPath)
 		};
 		console.log('Using existing SSL certificates');
-		return true;
+		return { success: true, newlyGenerated: false };
 	}
 
 	// Generate new certificates
@@ -599,7 +617,7 @@ function setupCertificates() {
 		}
 
 		// Generate self-signed certificate
-		const attrs = [{ name: 'commonName', value: 'WaveLogGate' }];
+		const attrs = [{ name: 'commonName', value: '127.0.0.1' }];
 		const certs = selfsigned.generate(attrs, {
 			days: 3650, // 10 years
 			altNames: [
@@ -621,11 +639,11 @@ function setupCertificates() {
 		};
 
 		console.log('Generated new SSL certificates');
-		return true;
+		return { success: true, newlyGenerated: true };
 	} catch (error) {
 		console.error('Failed to generate certificates:', error);
 		tomsg('Warning: Failed to generate SSL certificates. HTTPS server will not be available.');
-		return false;
+		return { success: false, newlyGenerated: false };
 	}
 }
 
@@ -638,6 +656,103 @@ function getCaCertificate() {
 		return fs.readFileSync(certPath, 'utf8');
 	}
 	return null;
+}
+
+// Install certificate in system trust store
+async function installCertificate() {
+	const { execSync } = require('child_process');
+	const userDataPath = app.getPath('userData');
+	const certPath = path.join(userDataPath, 'certs', 'server.crt');
+
+	if (!fs.existsSync(certPath)) {
+		return {
+			success: false,
+			message: 'Certificate not found. Please restart the application to generate it.',
+			manual: false
+		};
+	}
+
+	const platform = process.platform;
+
+	try {
+		if (platform === 'darwin') {
+			// macOS - try to install in user keychain (no sudo required)
+			// Then provide instruction for system keychain
+			try {
+				// Try user keychain first (no sudo needed)
+				execSync(`security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db "${certPath}"`, { stdio: 'ignore' });
+				console.log('Certificate installed in user keychain');
+				return {
+					success: true,
+					message: 'Certificate installed in user keychain. Safari should now trust it.',
+					manual: false
+				};
+			} catch (userError) {
+				// Fallback instructions for system keychain
+				console.log('Could not install in user keychain, providing manual instructions');
+				return {
+					success: false,
+					message: `Automatic installation failed. Please run this command in Terminal:\n\nsudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`,
+					manual: true,
+					command: `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`
+				};
+			}
+		} else if (platform === 'win32') {
+			// Windows - use certutil (may require admin)
+			try {
+				execSync(`certutil -addstore -f Root "${certPath}"`, { stdio: 'ignore' });
+				console.log('Certificate installed in Windows trust store');
+				return {
+					success: true,
+					message: 'Certificate installed in Windows trust store.',
+					manual: false
+				};
+			} catch (winError) {
+				return {
+					success: false,
+					message: `Installation requires Administrator privileges. Please run PowerShell as Administrator and execute:\n\ncertutil -addstore -f Root "${certPath}"`,
+					manual: true,
+					command: `certutil -addstore -f Root "${certPath}"`
+				};
+			}
+		} else if (platform === 'linux') {
+			// Linux - varies by distro, provide instructions
+			const distroInfo = getLinuxDistro();
+			return {
+				success: false,
+				message: `Linux certificate installation varies by distribution.\n\nFor Debian/Ubuntu:\nsudo cp "${certPath}" /usr/local/share/ca-certificates/\nsudo update-ca-certificates\n\nFor Fedora/RHEL:\nsudo cp "${certPath}" /etc/pki/ca-trust/source/anchors/\nsudo update-ca-trust`,
+				manual: true,
+				distro: distroInfo
+			};
+		}
+
+		return {
+			success: false,
+			message: 'Unsupported platform for automatic certificate installation.',
+			manual: true
+		};
+	} catch (error) {
+		console.error('Certificate installation error:', error);
+		return {
+			success: false,
+			message: `Installation failed: ${error.message}`,
+			manual: true
+		};
+	}
+}
+
+function getLinuxDistro() {
+	try {
+		const { execSync } = require('child_process');
+		if (fs.existsSync('/etc/os-release')) {
+			const osRelease = fs.readFileSync('/etc/os-release', 'utf8');
+			const match = osRelease.match(/ID=([^\n]+)/);
+			if (match) return match[1];
+		}
+	} catch (e) {
+		// Ignore
+	}
+	return 'unknown';
 }
 
 // Request handler for both HTTP and HTTPS servers
@@ -675,12 +790,22 @@ function createRequestHandler(req, res) {
 function startserver() {
 	try {
 		// Setup SSL certificates
-		const hasCerts = setupCertificates();
+		const certResult = setupCertificates();
 
 		tomsg('Waiting for QSO / Listening on UDP 2333');
 
+		// Prompt for certificate installation if newly generated
+		if (certResult.success && certResult.newlyGenerated) {
+			// Schedule prompt after window is ready
+			setTimeout(() => {
+				if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+					s_mainWindow.webContents.send('prompt_cert_install');
+				}
+			}, 2000);
+		}
+
 		// Create dual-mode HTTP/HTTPS server on port 54321
-		if (hasCerts && certPaths.key && certPaths.cert) {
+		if (certResult.success && certPaths.key && certPaths.cert) {
 			// Create httpolyglot server (handles both HTTP and HTTPS on same port)
 			const serverOptions = {
 				key: certPaths.key,
