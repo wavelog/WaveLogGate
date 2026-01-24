@@ -685,8 +685,8 @@ function setupCertificates() {
 		}]);
 
 		// Self-sign the certificate
-		cert.sign(keys.privateKey);
-
+		cert.sign(keys.privateKey, forge.md.sha256.create());
+		
 		// Convert to PEM format
 		const certPem = forge.pki.certificateToPem(cert);
 		const keyPem = forge.pki.privateKeyToPem(keys.privateKey);
