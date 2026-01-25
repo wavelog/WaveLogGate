@@ -2,9 +2,13 @@ const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker } = re
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
+const https = require('https');
 const xml = require("xml2js");
 const net = require('net');
 const WebSocket = require('ws');
+const fs = require('fs');
+const forge = require('node-forge');
+const httpolyglot = require('httpolyglot');
 
 // In some cases we need to make the WLgate window resizable (for example for tiling window managers)
 // Default: false
@@ -15,15 +19,25 @@ const gotTheLock = app.requestSingleInstanceLock();
 
 let powerSaveBlockerId;
 let s_mainWindow;
+let certInstallWindow;
 let msgbacklog=[];
-let httpServer;
+let qsyServer; // Dual-mode HTTP/HTTPS server for QSY
 let currentCAT=null;
 var WServer;
 let wsServer;
 let wsClients = new Set();
+let wssServer; // Secure WebSocket server
+let wssClients = new Set(); // Secure WebSocket clients
+let wssHttpsServer; // HTTPS server for secure WebSocket
 let isShuttingDown = false;
 let activeConnections = new Set(); // Track active TCP connections
 let activeHttpRequests = new Set(); // Track active HTTP requests for cancellation
+
+// Certificate paths for HTTPS server
+let certPaths = {
+	key: null,
+	cert: null
+};
 
 const DemoAdif='<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <rst_rcvd:2>33 <qso_date:8>20240110 <time_on:6>051855 <qso_date_off:8>20240110 <time_off:6>051855 <band:3>40m <freq:8>7.155783 <station_callsign:5>TE1ST <my_gridsquare:6>JO30OO <eor>';
 
@@ -132,6 +146,36 @@ ipcMain.on("radio_status_update", async (event,arg) => {
 	event.returnValue=true;
 });
 
+ipcMain.on("get_ca_cert", async (event) => {
+	// Return the CA certificate for display/installation
+	const caCert = getCaCertificate();
+	event.returnValue = caCert;
+});
+
+ipcMain.on("install_ca_cert", async (event) => {
+	// Attempt to install the CA certificate
+	const result = await installCertificate();
+	event.returnValue = result;
+});
+
+ipcMain.on("get_cert_info", async (event) => {
+	// Return certificate installation info for the UI
+	const userDataPath = app.getPath('userData');
+	const certPath = path.join(userDataPath, 'certs', 'server.crt');
+
+	event.returnValue = {
+		certPath: certPath,
+		platform: process.platform,
+		hasCert: fs.existsSync(certPath)
+	};
+});
+
+ipcMain.on("close_cert_install_window", async () => {
+	if (certInstallWindow && !certInstallWindow.isDestroyed()) {
+		certInstallWindow.close();
+	}
+});
+
 function cleanupConnections() {
     console.log('Cleaning up active TCP connections...');
 
@@ -190,9 +234,9 @@ function shutdownApplication() {
             console.log('Closing UDP server...');
             WServer.close();
         }
-        if (httpServer) {
-            console.log('Closing HTTP server...');
-            httpServer.close();
+        if (qsyServer) {
+            console.log('Closing QSY server...');
+            qsyServer.close();
         }
         if (wsServer) {
             console.log('Closing WebSocket server and clients...');
@@ -204,6 +248,19 @@ function shutdownApplication() {
             });
             wsClients.clear();
             wsServer.close();
+        }
+        if (wssServer) {
+            // Close all Secure WebSocket client connections
+            wssClients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.close();
+                }
+            });
+            wssClients.clear();
+            wssServer.close();
+            if (wssHttpsServer) {
+                wssHttpsServer.close();
+            }
         }
     } catch (error) {
         console.error('Error during server shutdown:', error);
@@ -260,7 +317,7 @@ process.on('SIGINT', () => {
 
 app.on('will-quit', () => {
 	try {
-		if (!sleepable) {
+		if (!sleepable && powerSaveBlockerId !== undefined) {
 			powerSaveBlocker.stop(powerSaveBlockerId);
 		}
 	} catch(e) {
@@ -556,23 +613,389 @@ function tomsg(msg) {
 	}
 }
 
+// Generate or load self-signed certificate for HTTPS server
+function setupCertificates() {
+	const userDataPath = app.getPath('userData');
+	const certDir = path.join(userDataPath, 'certs');
+
+	// Check if certificates already exist
+	const keyPath = path.join(certDir, 'server.key');
+	const certPath = path.join(certDir, 'server.crt');
+
+	if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+		// Load existing certificates
+		certPaths = {
+			key: fs.readFileSync(keyPath),
+			cert: fs.readFileSync(certPath)
+		};
+		console.log('Using existing SSL certificates');
+		return { success: true, newlyGenerated: false };
+	}
+
+	// Generate new certificates
+	try {
+		// Create cert directory if it doesn't exist
+		if (!fs.existsSync(certDir)) {
+			fs.mkdirSync(certDir, { recursive: true });
+		}
+
+		// Generate RSA key pair
+		const keys = forge.pki.rsa.generateKeyPair(2048);
+
+		// Create certificate
+		const cert = forge.pki.createCertificate();
+		cert.publicKey = keys.publicKey;
+		cert.serialNumber = '01';
+		cert.validity.notBefore = new Date();
+		cert.validity.notAfter = new Date();
+		cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10); // 10 years
+
+		// Set subject and issuer (self-signed)
+		const attrs = [{
+			name: 'commonName',
+			value: '127.0.0.1'
+		}];
+		cert.setSubject(attrs);
+		cert.setIssuer(attrs);
+
+		// Add extensions including SANs
+		cert.setExtensions([{
+			name: 'basicConstraints',
+			cA: false
+		}, {
+			name: 'keyUsage',
+			digitalSignature: true,
+			keyEncipherment: true
+		}, {
+			name: 'extKeyUsage',
+			serverAuth: true,
+			clientAuth: true
+		}, {
+			name: 'subjectAltName',
+			altNames: [{
+				type: 7, // IP address
+				ip: '127.0.0.1'
+			}, {
+				type: 2, // DNS name
+				value: 'localhost'
+			}, {
+				type: 7, // IPv6 address
+				ip: '::1'
+			}]
+		}]);
+
+		// Self-sign the certificate
+		cert.sign(keys.privateKey, forge.md.sha256.create());
+		
+		// Convert to PEM format
+		const certPem = forge.pki.certificateToPem(cert);
+		const keyPem = forge.pki.privateKeyToPem(keys.privateKey);
+
+		// Save certificates
+		fs.writeFileSync(keyPath, keyPem);
+		fs.writeFileSync(certPath, certPem);
+
+		certPaths = {
+			key: keyPem,
+			cert: certPem
+		};
+
+		console.log('Generated new SSL certificates');
+		return { success: true, newlyGenerated: true };
+	} catch (error) {
+		console.error('Failed to generate certificates:', error);
+		tomsg('Warning: Failed to generate SSL certificates. HTTPS server will not be available.');
+		return { success: false, newlyGenerated: false };
+	}
+}
+
+// Get certificate for user installation
+function getCaCertificate() {
+	const userDataPath = app.getPath('userData');
+	const certPath = path.join(userDataPath, 'certs', 'server.crt');
+
+	if (fs.existsSync(certPath)) {
+		return fs.readFileSync(certPath, 'utf8');
+	}
+	return null;
+}
+
+// Install certificate in system trust store
+async function installCertificate() {
+	const { execSync } = require('child_process');
+	const userDataPath = app.getPath('userData');
+	const certPath = path.join(userDataPath, 'certs', 'server.crt');
+
+	if (!fs.existsSync(certPath)) {
+		return {
+			success: false,
+			message: 'Certificate not found. Please restart the application to generate it.',
+			manual: false
+		};
+	}
+
+	const platform = process.platform;
+
+	try {
+		if (platform === 'darwin') {
+			// macOS - Use AppleScript to run with admin privileges (shows native password dialog)
+			try {
+				// Escape the certificate path for shell and AppleScript
+				const escapedCertPath = certPath.replace(/'/g, "'\\''");
+
+				// Use AppleScript to execute with administrator privileges
+				// This shows the native macOS authentication dialog
+				const appleScript = `
+					do shell script "security add-trusted-cert -d -p ssl -p basic -k /Library/Keychains/System.keychain '${escapedCertPath}'" with administrator privileges
+				`;
+
+				execSync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, { stdio: 'ignore' });
+				console.log('Certificate installed in System keychain via AppleScript');
+				return {
+					success: true,
+					message: 'Certificate installed in System keychain. Chrome and Safari should now trust it after restart.',
+					manual: false
+				};
+			} catch (sysError) {
+				console.log('AppleScript installation failed:', sysError.message);
+				return {
+					success: false,
+					message: `Installation was cancelled or failed.\n\nPlease try again and enter your macOS password when prompted.\n\nIf you prefer manual installation, run this command in Terminal:\n\nsudo security add-trusted-cert -d -p ssl -p basic -k /Library/Keychains/System.keychain "${certPath}"`,
+					manual: true,
+					command: `sudo security add-trusted-cert -d -p ssl -p basic -k /Library/Keychains/System.keychain "${certPath}"`
+				};
+			}
+		} else if (platform === 'win32') {
+			// Windows - try to install with elevation prompt
+			try {
+				// Try direct install first (if already running as admin)
+				execSync(`certutil -addstore -f Root "${certPath}"`, { stdio: 'ignore' });
+				console.log('Certificate installed in Windows trust store');
+				return {
+					success: true,
+					message: 'Certificate installed in Windows trust store.',
+					manual: false
+				};
+			} catch (winError) {
+				// Not running as admin - try PowerShell elevation
+				try {
+					const psScript = `Start-Process powershell -ArgumentList '-Command', 'certutil -addstore -f Root \\"${certPath}\\"' -Verb RunAs`;
+					execSync(`powershell -Command "${psScript}"`, { stdio: 'ignore' });
+					// Give it a moment for UAC dialog
+					await new Promise(resolve => setTimeout(resolve, 2000));
+					return {
+						success: true,
+						message: 'Certificate installation prompt shown. Please approve the UAC prompt and restart your browser.',
+						manual: false
+					};
+				} catch (elevateError) {
+					return {
+						success: false,
+						message: `Installation requires Administrator privileges. Please run PowerShell as Administrator and execute:\n\ncertutil -addstore -f Root "${certPath}"`,
+						manual: true,
+						command: `certutil -addstore -f Root "${certPath}"`
+					};
+				}
+			}
+		} else if (platform === 'linux') {
+			// Linux - try pkexec for GUI systems, fall back to manual instructions
+			try {
+				// Try pkexec (polkit) for GUI password prompt
+				const distroInfo = getLinuxDistro();
+
+				// Try Debian/Ubuntu approach first
+				if (fs.existsSync('/usr/local/share/ca-certificates/')) {
+					const installScript = `cp "${certPath}" /usr/local/share/ca-certificates/waveloggate.crt && update-ca-certificates`;
+					execSync(`pkexec sh -c '${installScript}'`, { stdio: 'ignore' });
+					return {
+						success: true,
+						message: 'Certificate installed. Please restart your browser.',
+						manual: false
+					};
+				}
+				// Try Fedora/RHEL approach
+				else if (fs.existsSync('/etc/pki/ca-trust/source/anchors/')) {
+					const installScript = `cp "${certPath}" /etc/pki/ca-trust/source/anchors/waveloggate.crt && update-ca-trust`;
+					execSync(`pkexec sh -c '${installScript}'`, { stdio: 'ignore' });
+					return {
+						success: true,
+						message: 'Certificate installed. Please restart your browser.',
+						manual: false
+					};
+				}
+				// Try Arch Linux approach
+				else if (fs.existsSync('/etc/ca-certificates/trust-source/anchors/')) {
+					const installScript = `cp "${certPath}" /etc/ca-certificates/trust-source/anchors/waveloggate.crt && update-ca-trust`;
+					execSync(`pkexec sh -c '${installScript}'`, { stdio: 'ignore' });
+					return {
+						success: true,
+						message: 'Certificate installed. Please restart your browser.',
+						manual: false
+					};
+				} else {
+					throw new Error('Unknown certificate location');
+				}
+			} catch (linuxError) {
+				// Fall back to manual instructions
+				return {
+					success: false,
+					message: `Automatic installation failed. Please run these commands in Terminal:\n\nDebian/Ubuntu:\nsudo cp "${certPath}" /usr/local/share/ca-certificates/waveloggate.crt\nsudo update-ca-certificates\n\nFedora/RHEL:\nsudo cp "${certPath}" /etc/pki/ca-trust/source/anchors/waveloggate.crt\nsudo update-ca-trust\n\nArch Linux:\nsudo cp "${certPath}" /etc/ca-certificates/trust-source/anchors/waveloggate.crt\nsudo update-ca-trust`,
+					manual: true
+				};
+			}
+		}
+
+		return {
+			success: false,
+			message: 'Unsupported platform for automatic certificate installation.',
+			manual: true
+		};
+	} catch (error) {
+		console.error('Certificate installation error:', error);
+		return {
+			success: false,
+			message: `Installation failed: ${error.message}`,
+			manual: true
+		};
+	}
+}
+
+function getLinuxDistro() {
+	try {
+		const { execSync } = require('child_process');
+		if (fs.existsSync('/etc/os-release')) {
+			const osRelease = fs.readFileSync('/etc/os-release', 'utf8');
+			const match = osRelease.match(/ID=([^\n]+)/);
+			if (match) return match[1];
+		}
+	} catch (e) {
+		// Ignore
+	}
+	return 'unknown';
+}
+
+// Request handler for both HTTP and HTTPS servers
+function createRequestHandler(req, res) {
+	// Handle CORS preflight requests (OPTIONS)
+	if (req.method === 'OPTIONS') {
+		res.setHeader('Access-Control-Allow-Origin', '*');
+		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+		res.setHeader('Access-Control-Max-Age', '86400');
+		res.writeHead(204);
+		res.end();
+		return;
+	}
+
+	// Handle QSY requests
+	res.setHeader('Access-Control-Allow-Origin', '*');
+	res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+	res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+
+	const parts = req.url.substr(1).split('/');
+	const qrg = parts[0];
+	const mode = parts[1] || '';
+
+	if (Number.isInteger(Number.parseInt(qrg))) {
+		settrx(qrg,mode);
+		res.writeHead(200, {'Content-Type': 'text/plain'});
+		res.end('OK');
+	} else {
+		res.writeHead(400, {'Content-Type': 'text/plain'});
+		res.end('Invalid frequency');
+	}
+}
+
+function showCertInstallWindow() {
+	// Close existing window if open
+	if (certInstallWindow && !certInstallWindow.isDestroyed()) {
+		certInstallWindow.focus();
+		return;
+	}
+
+	certInstallWindow = new BrowserWindow({
+		width: 600,
+		height: 500,
+		resizable: false,
+		parent: s_mainWindow,
+		modal: true,
+		autoHideMenuBar: app.isPackaged,
+		webPreferences: {
+			contextIsolation: false,
+			nodeIntegration: true,
+			devTools: !app.isPackaged,
+			enableRemoteModule: true,
+			preload: path.join(__dirname, 'preload.js')
+		}
+	});
+
+	if (app.isPackaged) {
+		certInstallWindow.setMenu(null);
+	}
+
+	certInstallWindow.loadFile('cert-install.html');
+	certInstallWindow.setTitle('WaveLogGate - SSL Certificate Installation');
+
+	certInstallWindow.on('closed', () => {
+		certInstallWindow = null;
+	});
+}
+
 function startserver() {
 	try {
+		// Setup SSL certificates
+		const certResult = setupCertificates();
+
 		tomsg('Waiting for QSO / Listening on UDP 2333');
-		httpServer = http.createServer(function (req, res) {
-			res.setHeader('Access-Control-Allow-Origin', '*');
-			res.writeHead(200, {'Content-Type': 'text/plain'});
-			res.end('');
-			const parts = req.url.substr(1).split('/');
-			const qrg = parts[0];
-			const mode = parts[1] || '';
-			if (Number.isInteger(Number.parseInt(qrg))) {
-				settrx(qrg,mode);
-			}
-		}).listen(54321);
+
+		// Prompt for certificate installation if newly generated
+		if (certResult.success && certResult.newlyGenerated) {
+			// Schedule prompt after window is ready
+			setTimeout(() => {
+				showCertInstallWindow();
+			}, 2000);
+		}
+
+		// Create dual-mode HTTP/HTTPS server on port 54321
+		if (certResult.success && certPaths.key && certPaths.cert) {
+			// Create httpolyglot server (handles both HTTP and HTTPS on same port)
+			const serverOptions = {
+				key: certPaths.key,
+				cert: certPaths.cert,
+				minVersion: 'TLSv1.2'
+			};
+
+			qsyServer = httpolyglot.createServer(serverOptions, createRequestHandler);
+			qsyServer.on('error', (err) => {
+				if (err.code === 'EADDRINUSE') {
+					console.error('QSY server port 54321 already in use');
+				} else {
+					console.error('QSY server error:', err);
+				}
+			});
+			qsyServer.listen(54321, () => {
+				console.log('Dual-mode HTTP/HTTPS QSY server listening on port 54321');
+			});
+		} else {
+			// Fallback to HTTP-only if certificates are not available
+			qsyServer = http.createServer(createRequestHandler);
+			qsyServer.on('error', (err) => {
+				if (err.code === 'EADDRINUSE') {
+					console.error('QSY server port 54321 already in use');
+				} else {
+					console.error('QSY server error:', err);
+				}
+			});
+			qsyServer.listen(54321, () => {
+				console.log('HTTP-only QSY server listening on port 54321');
+			});
+		}
 
 		// Start WebSocket server
 		startWebSocketServer();
+
+		// Start Secure WebSocket server
+		startSecureWebSocketServer();
 	} catch(e) {
 		tomsg('Some other Tool blocks Port 2333 or 54321. Stop it, and restart this');
 	}
@@ -612,6 +1035,56 @@ function startWebSocketServer() {
 	}
 }
 
+function startSecureWebSocketServer() {
+	if (!certPaths.key || !certPaths.cert) {
+		return;
+	}
+
+	try {
+		// Create HTTPS server first
+		wssHttpsServer = https.createServer({
+			key: certPaths.key,
+			cert: certPaths.cert
+		});
+
+		// Listen on port 54323
+		wssHttpsServer.listen(54323);
+
+		// Attach WebSocket server to the HTTPS server
+		wssServer = new WebSocket.Server({ server: wssHttpsServer });
+
+		wssServer.on('connection', (ws) => {
+			wssClients.add(ws);
+
+			ws.on('close', () => {
+				wssClients.delete(ws);
+			});
+
+			ws.on('error', (error) => {
+				wssClients.delete(ws);
+			});
+
+			// Send current radio status on connection
+			ws.send(JSON.stringify({
+				type: 'welcome',
+				message: 'Connected to WaveLogGate Secure WebSocket server'
+			}));
+			broadcastRadioStatus(currentCAT);
+		});
+
+		wssServer.on('error', (error) => {
+			// Silent error handling
+		});
+
+		wssHttpsServer.on('error', (error) => {
+			// Silent error handling
+		});
+
+	} catch(e) {
+		// Silent error handling
+	}
+}
+
 function broadcastRadioStatus(radioData) {
 	currentCAT=radioData;
 	let message = {
@@ -628,7 +1101,14 @@ function broadcastRadioStatus(radioData) {
 	}
 
 	const messageStr = JSON.stringify(message);
+	// Broadcast to regular WebSocket clients
 	wsClients.forEach((client) => {
+		if (client.readyState === WebSocket.OPEN) {
+			client.send(messageStr);
+		}
+	});
+	// Broadcast to secure WebSocket clients
+	wssClients.forEach((client) => {
 		if (client.readyState === WebSocket.OPEN) {
 			client.send(messageStr);
 		}
