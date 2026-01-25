@@ -729,6 +729,86 @@ function getCaCertificate() {
 	return null;
 }
 
+// Check if certificate is installed in system trust store
+function isCertificateInstalled() {
+	const { execSync } = require('child_process');
+	const userDataPath = app.getPath('userData');
+	const certPath = path.join(userDataPath, 'certs', 'server.crt');
+
+	if (!fs.existsSync(certPath)) {
+		return false;
+	}
+
+	const platform = process.platform;
+
+	try {
+		if (platform === 'win32') {
+			// Windows: Check if cert exists in Root store
+			// Use certutil to dump the Root store and search for our cert
+			try {
+				const output = execSync('certutil -store Root', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+				// Check for our certificate's common name (127.0.0.1)
+				return output.includes('CN=127.0.0.1') || output.includes('127.0.0.1');
+			} catch (err) {
+				console.log('Failed to check Windows certificate store:', err.message);
+				return false;
+			}
+		} else if (platform === 'darwin') {
+			// macOS: Check if cert exists in System keychain
+			try {
+				execSync('security find-certificate -c "127.0.0.1" -p /Library/Keychains/System.keychain', { stdio: 'ignore' });
+				return true;
+			} catch (err) {
+				// Also check user keychain as fallback
+				try {
+					execSync('security find-certificate -c "127.0.0.1" -p ~/Library/Keychains/login.keychain-db', { stdio: 'ignore' });
+					return true;
+				} catch (userErr) {
+					return false;
+				}
+			}
+		} else if (platform === 'linux') {
+			// Linux: Check if cert exists in system ca-certificates directories
+			const certContent = fs.readFileSync(certPath, 'utf8');
+			// Calculate a simple hash of the certificate content
+			const crypto = require('crypto');
+			const certHash = crypto.createHash('sha256').update(certContent).digest('hex');
+
+			// Check Debian/Ubuntu location
+			const debPath = '/usr/local/share/ca-certificates/waveloggate.crt';
+			if (fs.existsSync(debPath)) {
+				const existingContent = fs.readFileSync(debPath, 'utf8');
+				const existingHash = crypto.createHash('sha256').update(existingContent).digest('hex');
+				if (certHash === existingHash) return true;
+			}
+
+			// Check Fedora/RHEL location
+			const rhelPath = '/etc/pki/ca-trust/source/anchors/waveloggate.crt';
+			if (fs.existsSync(rhelPath)) {
+				const existingContent = fs.readFileSync(rhelPath, 'utf8');
+				const existingHash = crypto.createHash('sha256').update(existingContent).digest('hex');
+				if (certHash === existingHash) return true;
+			}
+
+			// Check Arch Linux location
+			const archPath = '/etc/ca-certificates/trust-source/anchors/waveloggate.crt';
+			if (fs.existsSync(archPath)) {
+				const existingContent = fs.readFileSync(archPath, 'utf8');
+				const existingHash = crypto.createHash('sha256').update(existingContent).digest('hex');
+				if (certHash === existingHash) return true;
+			}
+
+			return false;
+		}
+
+		// Unknown platform - assume not installed
+		return false;
+	} catch (error) {
+		console.log('Error checking certificate installation:', error.message);
+		return false;
+	}
+}
+
 // Install certificate in system trust store
 async function installCertificate() {
 	const { execSync } = require('child_process');
@@ -969,12 +1049,21 @@ function startserver() {
 
 		tomsg('Waiting for QSO / Listening on UDP 2333');
 
-		// Prompt for certificate installation if newly generated
-		if (certResult.success && certResult.newlyGenerated) {
-			// Schedule prompt after window is ready
-			setTimeout(() => {
-				showCertInstallWindow();
-			}, 2000);
+		// Prompt for certificate installation if:
+		// 1. Cert was just generated, OR
+		// 2. Cert exists but is NOT installed in system trust store
+		if (certResult.success) {
+			const certInstalled = isCertificateInstalled();
+
+			if (certResult.newlyGenerated || !certInstalled) {
+				console.log('Certificate installation prompt needed - newlyGenerated:', certResult.newlyGenerated, 'installed:', certInstalled);
+				// Schedule prompt after window is ready
+				setTimeout(() => {
+					showCertInstallWindow();
+				}, 2000);
+			} else {
+				console.log('Certificate is installed in system trust store');
+			}
 		}
 
 		// Create dual-mode HTTP/HTTPS server on port 54321
