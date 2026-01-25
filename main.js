@@ -685,8 +685,8 @@ function setupCertificates() {
 		}]);
 
 		// Self-sign the certificate
-		cert.sign(keys.privateKey);
-
+		cert.sign(keys.privateKey, forge.md.sha256.create());
+		
 		// Convert to PEM format
 		const certPem = forge.pki.certificateToPem(cert);
 		const keyPem = forge.pki.privateKeyToPem(keys.privateKey);
@@ -822,6 +822,16 @@ async function installCertificate() {
 						message: 'Certificate installed. Please restart your browser.',
 						manual: false
 					};
+				}
+				// Try Arch Linux approach
+				else if (fs.existsSync('/etc/ca-certificates/trust-source/anchors/')) {
+					const installScript = `cp "${certPath}" /etc/ca-certificates/trust-source/anchors/waveloggate.crt && update-ca-trust`;
+					execSync(`pkexec sh -c '${installScript}'`, { stdio: 'ignore' });
+					return {
+						success: true,
+						message: 'Certificate installed. Please restart your browser.',
+						manual: false
+					};
 				} else {
 					throw new Error('Unknown certificate location');
 				}
@@ -829,7 +839,7 @@ async function installCertificate() {
 				// Fall back to manual instructions
 				return {
 					success: false,
-					message: `Automatic installation failed. Please run these commands in Terminal:\n\nDebian/Ubuntu:\nsudo cp "${certPath}" /usr/local/share/ca-certificates/waveloggate.crt\nsudo update-ca-certificates\n\nFedora/RHEL:\nsudo cp "${certPath}" /etc/pki/ca-trust/source/anchors/waveloggate.crt\nsudo update-ca-trust`,
+					message: `Automatic installation failed. Please run these commands in Terminal:\n\nDebian/Ubuntu:\nsudo cp "${certPath}" /usr/local/share/ca-certificates/waveloggate.crt\nsudo update-ca-certificates\n\nFedora/RHEL:\nsudo cp "${certPath}" /etc/pki/ca-trust/source/anchors/waveloggate.crt\nsudo update-ca-trust\n\nArch Linux:\nsudo cp "${certPath}" /etc/ca-certificates/trust-source/anchors/waveloggate.crt\nsudo update-ca-trust`,
 					manual: true
 				};
 			}
