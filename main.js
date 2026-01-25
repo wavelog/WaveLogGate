@@ -20,6 +20,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 let powerSaveBlockerId;
 let s_mainWindow;
 let certInstallWindow;
+let pendingCertInstall = false; // Track if cert install needs to be shown
 let msgbacklog=[];
 let qsyServer; // Dual-mode HTTP/HTTPS server for QSY
 let currentCAT=null;
@@ -343,6 +344,14 @@ if (!gotTheLock) {
 				s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
 			}
 		});
+
+		// Show certificate install window if it was pending (before main window was ready)
+		if (pendingCertInstall) {
+			// Small delay to ensure main window is fully visible
+			setTimeout(() => {
+				showCertInstallWindow();
+			}, 500);
+		}
 	});
 }
 
@@ -913,12 +922,24 @@ function showCertInstallWindow() {
 		return;
 	}
 
+	// If main window is not ready yet, mark as pending and return
+	// The main window ready handler will call this again
+	if (!s_mainWindow || s_mainWindow.isDestroyed()) {
+		pendingCertInstall = true;
+		console.log('Main window not ready, cert install will show after window is ready');
+		return;
+	}
+
+	pendingCertInstall = false;
+
+	// Determine if we should attach to parent (only if main window is visible and ready)
+	const useParent = s_mainWindow && !s_mainWindow.isDestroyed() && s_mainWindow.isVisible();
+
 	certInstallWindow = new BrowserWindow({
 		width: 600,
 		height: 500,
 		resizable: false,
-		parent: s_mainWindow,
-		modal: true,
+		...(useParent ? { parent: s_mainWindow, modal: true } : {}),
 		autoHideMenuBar: app.isPackaged,
 		webPreferences: {
 			contextIsolation: false,
