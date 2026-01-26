@@ -149,3 +149,28 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PRERELEASE: ${{ inputs.prerelease || 'false' }}
       run: npx electron-forge publish
+    - name: upload Squirrel artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: win-squirrel-artifacts
+        path: out/make/squirrel.windows/x64/*
+        if-no-files-found: ignore
+
+  generate_windows_update_yaml:
+    runs-on: windows-latest
+    needs: [build_on_win]
+    steps:
+    - uses: actions/checkout@v4
+    - name: download Squirrel artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: win-squirrel-artifacts
+        path: out/make/squirrel.windows/x64
+    - name: generate and upload latest.yml
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PRERELEASE: ${{ inputs.prerelease || 'false' }}
+      shell: pwsh
+      run: |
+        node generate-windows-yml.js
+        gh release upload v$(node -p "require('./package.json').version") out/make/latest.yml --clobber
