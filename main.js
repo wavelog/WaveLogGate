@@ -76,11 +76,15 @@ autoUpdater.autoInstallOnAppQuit = true;  // Install on app quit
 
 // Auto-updater event handlers
 autoUpdater.on('checking-for-update', () => {
-	console.log('Checking for update...');
+	const logMsg = 'Checking for update...\n';
+	console.log(logMsg);
+	fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), logMsg);
 });
 
 autoUpdater.on('update-available', (info) => {
-	console.log('Update available:', info.version);
+	const logMsg = `Update available: ${info.version}\n`;
+	console.log(logMsg);
+	fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), logMsg);
 	// Notify user that update is downloading
 	if (Notification.isSupported()) {
 		new Notification({
@@ -91,11 +95,15 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', (info) => {
-	console.log('No update available (current version:', app.getVersion() + ')');
+	const logMsg = `No update available (current version: ${app.getVersion()})\n`;
+	console.log(logMsg);
+	fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), logMsg);
 });
 
 autoUpdater.on('error', (err) => {
+	const logMsg = `Update error: ${err}\n`;
 	console.error('Update error:', err);
+	fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), logMsg);
 });
 
 autoUpdater.on('download-progress', (progress) => {
@@ -170,7 +178,7 @@ function createWindow () {
 			contextIsolation: false,
 			backgroundThrottling: false,
 			nodeIntegration: true,
-			devTools: !app.isPackaged,
+			devTools: true, // Enable for debugging auto-updater
 			enableRemoteModule: true,
 			preload: path.join(__dirname, 'preload.js')
 		}
