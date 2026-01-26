@@ -34,6 +34,11 @@ module.exports = {
 		executableName: "wlgate",
 		icon: './icon',
 		asar: true,
+		// Windows updater configuration
+		productName: "WaveLogGate",
+		win32Metadata: {
+			companyName: "DJ7NT"
+		}
 	},
 	publishers: [
 		{

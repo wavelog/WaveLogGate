@@ -137,6 +137,7 @@ jobs:
         p.repository={type:'git',url:'$repoUrl'};
         p.build=p.build||{};
         p.build.publish=[{provider:'github',owner:'$owner',repo:'$repo'}];
+        p.build.win=p.build.win||{};
         require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));
         "@
         node -e $js
