@@ -78,19 +78,28 @@ function generateWindowsUpdateYml() {
   const nupkgSize = getFileSize(nupkgPath);
   const nupkgSha512 = getFileHash(nupkgPath);
 
-  // Read RELEASES file to get the filename
+  // Read RELEASES file to get the filename (if it exists)
+  let releasesFilename = nupkgFile;  // Default to the nupkg filename we found
+
   const releasesPath = path.join(squirrelDir, 'RELEASES');
-  const releasesContent = fs.readFileSync(releasesPath, 'utf8');
+  if (fs.existsSync(releasesPath)) {
+    const releasesContent = fs.readFileSync(releasesPath, 'utf8');
+    console.log('RELEASES file content:', releasesContent);
 
-  // The RELEASES file contains lines like:
-  // 3F9E4A7B5C2D8E1F * WLGate_by_DJ7NT-1.1.28-full.nupkg 12345678
-  const releasesMatch = releasesContent.match(/\*\s*([^\s]+-\d+\.\d+\.\d+-full\.nupkg)/);
-  if (!releasesMatch) {
-    console.error('Could not parse RELEASES file');
-    process.exit(1);
+    // Try various patterns for RELEASES file format
+    // Pattern 1: * filename hash
+    let match = releasesContent.match(/\*?\s*([^\s*]+?\.nupkg)/);
+    // Pattern 2: Just find any .nupkg filename
+    if (!match) {
+      match = releasesContent.match(/([a-zA-Z0-9_\-\.]+\.nupkg)/);
+    }
+    if (match) {
+      releasesFilename = match[1];
+      console.log('Parsed filename from RELEASES:', releasesFilename);
+    }
+  } else {
+    console.log('RELEASES file not found, using nupkg filename directly');
   }
-
-  const releasesFilename = releasesMatch[1];
 
   // Generate the YAML content
   // For GitHub releases, the URL will be constructed by electron-updater
