@@ -129,7 +129,8 @@ jobs:
       shell: pwsh
       run: |
         $repo = "$env:GITHUB_REPOSITORY"
-        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${repo}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
+        $url = "https://github.com/$repo.git"
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'$url'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: install dependencies
       run: npm install
     - name: build and publish
