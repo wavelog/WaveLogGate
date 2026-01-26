@@ -19,6 +19,7 @@
     "electron-json-config": "^2.1.0",
     "electron-json-storage": "^4.6.0",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.3.9",
     "httpolyglot": "^0.1.2",
     "jquery": "^3.7.1",
     "node-forge": "^1.3.1",
@@ -38,5 +39,12 @@
     "@electron-forge/publisher-github": "^7.10.2",
     "electron": "^39.0.0",
     "electron-rebuild": "^3.2.9"
+  },
+  "build": {
+    "publish": [{
+      "provider": "github",
+      "owner": "wavelog",
+      "repo": "WaveLogGate"
+    }]
   }
 }

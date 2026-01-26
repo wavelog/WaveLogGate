@@ -1,6 +1,7 @@
-const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker } = require('electron/main');
+const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker, dialog } = require('electron/main');
 const path = require('node:path');
 const {ipcMain} = require('electron')
+const { autoUpdater } = require('electron-updater');
 const http = require('http');
 const https = require('https');
 const xml = require("xml2js");
@@ -63,6 +64,103 @@ let defaultcfg = {
 }
 
 const storage = require('electron-json-storage');
+
+// =============================================================================
+// Auto-Updater Configuration
+// =============================================================================
+
+// Configure auto updater settings
+autoUpdater.autoDownload = true;  // Download updates automatically
+autoUpdater.autoInstallOnAppQuit = true;  // Install on app quit
+autoUpdater.setFeedURL({
+  provider: 'github',
+  owner: 'wavelog',
+  repo: 'WaveLogGate'
+});
+
+// Auto-updater event handlers
+autoUpdater.on('checking-for-update', () => {
+	console.log('Checking for update...');
+});
+
+autoUpdater.on('update-available', (info) => {
+	console.log('Update available:', info.version);
+	// Notify user that update is downloading
+	if (Notification.isSupported()) {
+		new Notification({
+			title: 'WaveLogGate Update',
+			body: `Version ${info.version} is available. Downloading in background...`
+		}).show();
+	}
+});
+
+autoUpdater.on('update-not-available', (info) => {
+	console.log('No update available (current version:', app.getVersion() + ')');
+});
+
+autoUpdater.on('error', (err) => {
+	console.error('Update error:', err);
+});
+
+autoUpdater.on('download-progress', (progress) => {
+	if (progress.percent % 20 === 0 || progress.percent === 100) {
+		console.log(`Download progress: ${Math.floor(progress.percent)}%`);
+	}
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+	console.log('Update downloaded:', info.version);
+
+	// Show dialog to restart and install
+	dialog.showMessageBox(s_mainWindow, {
+		type: 'info',
+		title: 'Update Ready',
+		message: `WaveLogGate ${info.version} has been downloaded.`,
+		detail: 'Would you like to restart and install the update now?',
+		buttons: ['Restart Now', 'Later'],
+		defaultId: 0
+	}).then((result) => {
+		if (result.response === 0) {
+			// In mock mode, use app.relaunch() instead of autoUpdater.quitAndInstall()
+			if (process.env.WLGATE_MOCK_UPDATE === 'true') {
+				console.log('Mock update mode: Restarting app...');
+				app.relaunch();
+				app.quit();
+			} else {
+				autoUpdater.quitAndInstall();
+			}
+		}
+	});
+});
+
+// Function to check for updates manually
+function checkForUpdates() {
+	// Mock mode for testing update UI flow
+	const mockUpdate = process.env.WLGATE_MOCK_UPDATE === 'true';
+
+	if (mockUpdate) {
+		console.log('Mock update mode: Simulating update available...');
+		// Simulate update available event
+		autoUpdater.emit('update-available', { version: '2.0.0' });
+
+		// Simulate download progress after a delay
+		setTimeout(() => {
+			console.log('Mock update mode: Simulating download...');
+			autoUpdater.emit('download-progress', { percent: 50, transferred: 1000000, total: 2000000 });
+		}, 2000);
+
+		// Simulate download complete after another delay
+		setTimeout(() => {
+			console.log('Mock update mode: Simulating download complete');
+			autoUpdater.emit('update-downloaded', { version: '2.0.0' });
+		}, 5000);
+	} else if (app.isPackaged) {
+		autoUpdater.checkForUpdates();
+	} else {
+		console.log('Skipping update check (development mode)');
+		console.log('To test update UI, set WLGATE_MOCK_UPDATE=true environment variable');
+	}
+}
 
 app.disableHardwareAcceleration(); 
 
@@ -175,6 +273,12 @@ ipcMain.on("close_cert_install_window", async () => {
 	if (certInstallWindow && !certInstallWindow.isDestroyed()) {
 		certInstallWindow.close();
 	}
+});
+
+ipcMain.on("check_for_updates", async (event) => {
+	// Manual update check triggered from renderer
+	checkForUpdates();
+	event.returnValue = true;
 });
 
 function cleanupConnections() {
@@ -343,6 +447,8 @@ if (!gotTheLock) {
 			if (msgbacklog.length>0) {
 				s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
 			}
+			// Check for updates on startup
+			checkForUpdates();
 		});
 
 		// Show certificate install window if it was pending (before main window was ready)
