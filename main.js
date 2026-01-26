@@ -72,7 +72,26 @@ const storage = require('electron-json-storage');
 // Configure auto updater settings
 autoUpdater.autoDownload = true;  // Download updates automatically
 autoUpdater.autoInstallOnAppQuit = true;  // Install on app quit
-// Note: Feed URL is configured in package.json under build.publish
+
+// Read update configuration from package.json and set feed URL explicitly
+try {
+	const pkg = require('./package.json');
+	if (pkg.build && pkg.build.publish && pkg.build.publish[0]) {
+		const publisher = pkg.build.publish[0];
+		if (publisher.provider === 'github' && publisher.owner && publisher.repo) {
+			// For Windows Squirrel, construct the update URL explicitly
+			const feedURL = `https://github.com/${publisher.owner}/${publisher.repo}/releases/download`;
+			autoUpdater.setFeedURL({
+				provider: 'github',
+				owner: publisher.owner,
+				repo: publisher.repo
+			});
+			fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), `Update feed configured: ${feedURL}\n`);
+		}
+	}
+} catch (e) {
+	fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), `Failed to configure feed: ${e}\n`);
+}
 
 // Auto-updater event handlers
 autoUpdater.on('checking-for-update', () => {
