@@ -16,6 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: set dynamic repository
+      run: |
+        REPONAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
+        REPONAME=${REPONAME//-/_}
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: install dependencies
       run: npm install
     - name: build and publish x64
@@ -35,6 +40,11 @@ jobs:
     runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
+    - name: set dynamic repository
+      run: |
+        REPONAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
+        REPONAME=${REPONAME//-/_}
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: setup python
       uses: actions/setup-python@v5
       with:
@@ -61,6 +71,11 @@ jobs:
     runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
+    - name: set dynamic repository
+      run: |
+        REPONAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
+        REPONAME=${REPONAME//-/_}
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: setup python
       uses: actions/setup-python@v5
       with:
@@ -110,6 +125,11 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
+    - name: set dynamic repository
+      shell: pwsh
+      run: |
+        $repo = "$env:GITHUB_REPOSITORY"
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${repo}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: install dependencies
       run: npm install
     - name: build and publish
