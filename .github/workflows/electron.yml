@@ -85,8 +85,6 @@ jobs:
         p.repository={type:'git',url:'$repoUrl'};
         p.build=p.build||{};
         p.build.publish=[{provider:'github',owner:'$owner',repo:'$repo'}];
-        p.build.win=p.build.win||{};
-        p.build.win.target='squirrel';
         require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));
         "@
         node -e $js
@@ -129,8 +127,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         node generate-update-yml.js
-        # Squirrel.Windows uses RELEASES file, not latest.yml
-        # electron-updater reads RELEASES directly from GitHub
+        # NSIS generates latest.yml automatically during build
+        # No need to generate it manually
 
     - name: create release and upload all artifacts
       env:
@@ -154,5 +152,5 @@ jobs:
         gh release create "v$VERSION" --draft $FILES || true
 
         # Ensure all files are uploaded (handles both new and existing releases)
-        # Note: Don't upload latest.yml for Windows - Squirrel uses RELEASES file
-        find out/make -type f \( -name "*.zip" -o -name "*.dmg" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" -o -name "latest-mac.yml" \) -exec gh release upload "v$VERSION" {} --clobber --repo ${{ github.repository }} \;
+        # NSIS generates latest.yml automatically
+        find out/make -type f \( -name "*.zip" -o -name "*.dmg" -o -name "*.exe" -o -name "latest*.yml" \) -exec gh release upload "v$VERSION" {} --clobber --repo ${{ github.repository }} \;

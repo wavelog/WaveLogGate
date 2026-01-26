@@ -54,9 +54,15 @@ module.exports = {
 	],
 	rebuildConfig: {},
 	makers: [
+		// Use NSIS instead of Squirrel for better electron-updater compatibility
 		{
-			name: '@electron-forge/maker-squirrel',
-			config: { icon: "./icon.png", maintainer: 'DJ7NT', loadingGif: "loading.gif", name: "WLGate_by_DJ7NT" },
+			name: '@electron-forge/maker-nsis',
+			config: {
+				icon: "./icon",
+				createDesktopShortcut: true,
+				createStartMenuShortcut: true,
+				perMachine: false
+			},
 		},
 		{
 			name: '@electron-forge/maker-dmg',
