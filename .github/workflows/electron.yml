@@ -129,7 +129,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         node generate-update-yml.js
-        # No need to generate latest.yml for Squirrel - it uses RELEASES file directly
+        node generate-windows-yml.js
 
     - name: create release and upload all artifacts
       env:
@@ -153,4 +153,4 @@ jobs:
         gh release create "v$VERSION" --draft $FILES || true
 
         # Ensure all files are uploaded (handles both new and existing releases)
-        find out/make -type f \( -name "*.zip" -o -name "*.dmg" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" -o -name "latest-mac.yml" \) -exec gh release upload "v$VERSION" {} --clobber --repo ${{ github.repository }} \;
+        find out/make -type f \( -name "*.zip" -o -name "*.dmg" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" -o -name "latest*.yml" \) -exec gh release upload "v$VERSION" {} --clobber --repo ${{ github.repository }} \;
