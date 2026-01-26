@@ -129,7 +129,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         node generate-update-yml.js
-        node generate-windows-yml.js
+        # Squirrel.Windows uses RELEASES file, not latest.yml
+        # electron-updater reads RELEASES directly from GitHub
 
     - name: create release and upload all artifacts
       env:
@@ -153,4 +154,5 @@ jobs:
         gh release create "v$VERSION" --draft $FILES || true
 
         # Ensure all files are uploaded (handles both new and existing releases)
-        find out/make -type f \( -name "*.zip" -o -name "*.dmg" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" -o -name "latest*.yml" \) -exec gh release upload "v$VERSION" {} --clobber --repo ${{ github.repository }} \;
+        # Note: Don't upload latest.yml for Windows - Squirrel uses RELEASES file
+        find out/make -type f \( -name "*.zip" -o -name "*.dmg" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" -o -name "latest-mac.yml" \) -exec gh release upload "v$VERSION" {} --clobber --repo ${{ github.repository }} \;
