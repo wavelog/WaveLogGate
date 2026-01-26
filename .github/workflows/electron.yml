@@ -100,100 +100,57 @@ jobs:
         name: win-artifacts
         path: out/make/*
 
-  publish_mac:
+  publish_release:
     runs-on: macos-latest
-    needs: [build_mac]
+    needs: [build_mac, build_win]
     steps:
     - uses: actions/checkout@v4
-    - name: set dynamic repository
-      run: |
-        REPONAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
-        REPONAME=${REPONAME//-/_}
-        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
+
     - name: download mac artifacts
       uses: actions/download-artifact@v4
       with:
         name: mac-artifacts
         path: out/make
-    - name: generate latest-mac.yml and publish
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        PRERELEASE: ${{ inputs.prerelease || 'false' }}
-      run: |
-        node generate-update-yml.js
-        VERSION=$(node -p "require('./package.json').version")
 
-        # Collect all files to upload
-        FILES=""
-        [ -f "out/make/latest-mac.yml" ] && FILES="$FILES out/make/latest-mac.yml"
-        for f in out/make/zip/darwin/arm64/*.zip; do [ -f "$f" ] && FILES="$FILES $f"; done
-        for f in out/make/zip/darwin/x64/*.zip; do [ -f "$f" ] && FILES="$FILES $f"; done
-        for f in out/make/darwin/arm64/*.dmg; do [ -f "$f" ] && FILES="$FILES $f"; done
-        for f in out/make/darwin/x64/*.dmg; do [ -f "$f" ] && FILES="$FILES $f"; done
-
-        echo "Files to upload: $FILES"
-
-        # Try to create release (will fail if exists, which is fine)
-        gh release create "v$VERSION" --draft $FILES || true
-
-        # Upload any files that weren't included (in case release already existed)
-        for f in out/make/zip/darwin/arm64/*.zip out/make/zip/darwin/x64/*.zip out/make/darwin/arm64/*.dmg out/make/darwin/x64/*.dmg out/make/latest-mac.yml; do
-          [ -f "$f" ] && gh release upload "v$VERSION" "$f" --clobber --repo ${{ github.repository }} || true
-        done
-
-  publish_win:
-    runs-on: windows-latest
-    needs: [build_win]
-    steps:
-    - uses: actions/checkout@v4
-    - name: set dynamic repository
-      shell: pwsh
-      run: |
-        $parts = "$env:GITHUB_REPOSITORY" -split '/'
-        $owner = $parts[0]
-        $repo = $parts[1]
-        $repoUrl = "https://github.com/$env:GITHUB_REPOSITORY.git"
-        $js = @"
-        let p=require('./package.json');
-        p.repository={type:'git',url:'$repoUrl'};
-        p.build=p.build||{};
-        p.build.publish=[{provider:'github',owner:'$owner',repo:'$repo'}];
-        p.build.win=p.build.win||{};
-        p.build.win.target='squirrel';
-        require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));
-        "@
-        node -e $js
     - name: download win artifacts
       uses: actions/download-artifact@v4
       with:
         name: win-artifacts
         path: out/make
-    - name: generate latest.yml and publish
+
+    - name: set dynamic repository
+      run: |
+        REPONAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
+        REPONAME=${REPONAME//-/_}
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
+
+    - name: generate update yml files
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        node generate-update-yml.js
+        node generate-windows-yml.js
+
+    - name: create release and upload all artifacts
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PRERELEASE: ${{ inputs.prerelease || 'false' }}
-      shell: pwsh
       run: |
-        node generate-windows-yml.js
-        $version = node -p "require('./package.json').version"
+        VERSION=$(node -p "require('./package.json').version")
+        echo "Creating release v$VERSION"
 
-        # Get all Squirrel files
-        $files = @()
-        if (Test-Path "out/make/latest.yml") { $files += "out/make/latest.yml" }
-        if (Test-Path "out/make/squirrel.windows/x64") {
-          Get-ChildItem -Path "out/make/squirrel.windows/x64" -Recurse -File | ForEach-Object {
-            $files += $_.FullName
-          }
-        }
+        # Find all files to upload
+        FILES=""
+        for f in out/make/**/*.*; do
+          if [ -f "$f" ]; then
+            FILES="$FILES $f"
+          fi
+        done
 
-        Write-Host "Files to upload: $($files -join ', ')"
+        echo "Files: $FILES"
 
-        # Try to create release with all files (will fail if exists)
-        gh release create "v$version" --draft $files 2>$null
+        # Try to create release (fails if exists, which is fine)
+        gh release create "v$VERSION" --draft $FILES || true
 
-        # Upload each file individually (handles both new and existing releases)
-        foreach ($f in $files) {
-          if (Test-Path $f) {
-            gh release upload "v$version" $f --clobber --repo ${{ github.repository }} 2>$null
-          }
-        }
+        # Ensure all files are uploaded (handles both new and existing releases)
+        find out/make -type f \( -name "*.zip" -o -name "*.dmg" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" -o -name "latest*.yml" \) -exec gh release upload "v$VERSION" {} --clobber --repo ${{ github.repository }} \;
