@@ -4,6 +4,12 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build_on_linux:
@@ -42,6 +48,7 @@ jobs:
     - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PRERELEASE: ${{ inputs.prerelease || 'false' }}
       run: npx electron-forge publish --arch=arm64
     - name: upload zip as artifact
       uses: actions/upload-artifact@v4
@@ -67,6 +74,7 @@ jobs:
     - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PRERELEASE: ${{ inputs.prerelease || 'false' }}
       run: npx electron-forge publish --arch=x64
     - name: upload zip as artifact
       uses: actions/upload-artifact@v4
@@ -93,6 +101,7 @@ jobs:
     - name: generate and upload latest-mac.yml
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PRERELEASE: ${{ inputs.prerelease || 'false' }}
       run: |
         node generate-update-yml.js
         gh release upload v$(node -p "require('./package.json').version") out/make/latest-mac.yml --clobber
@@ -106,4 +115,5 @@ jobs:
     - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PRERELEASE: ${{ inputs.prerelease || 'false' }}
       run: npx electron-forge publish
