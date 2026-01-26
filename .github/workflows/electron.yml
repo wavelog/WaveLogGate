@@ -23,7 +23,7 @@ jobs:
         node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: install dependencies
       run: npm install
-    - name: build and publish x64
+    - name: build and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --platform linux --arch=x64
@@ -36,7 +36,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --platform linux --arch=arm64
 
-  build_on_mac_arm:
+  build_mac:
     runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
@@ -55,73 +55,21 @@ jobs:
         npm install -g appdmg@0.6.6
     - name: install dependencies
       run: npm install
-    - name: build and publish
+    - name: build arm64
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        PRERELEASE: ${{ inputs.prerelease || 'false' }}
-      run: npx electron-forge publish --arch=arm64
-    - name: upload zip as artifact
+      run: npx electron-forge make --arch=arm64
+    - name: build x64
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: npx electron-forge make --arch=x64
+    - name: upload mac artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: mac-arm64-zip
-        path: out/make/zip/darwin/arm64/*.zip
-        if-no-files-found: ignore
+        name: mac-artifacts
+        path: out/make/*
 
-  build_on_mac_x64:
-    runs-on: macos-14
-    steps:
-    - uses: actions/checkout@v4
-    - name: set dynamic repository
-      run: |
-        REPONAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
-        REPONAME=${REPONAME//-/_}
-        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
-    - name: setup python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
-    - name: setup appdmg
-      run: |
-        python3 -m pip install setuptools
-        npm install -g appdmg@0.6.6
-    - name: install dependencies
-      run: npm install
-    - name: build and publish
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        PRERELEASE: ${{ inputs.prerelease || 'false' }}
-      run: npx electron-forge publish --arch=x64
-    - name: upload zip as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: mac-x64-zip
-        path: out/make/zip/darwin/x64/*.zip
-        if-no-files-found: ignore
-
-  generate_mac_update_yaml:
-    runs-on: macos-latest
-    needs: [build_on_mac_arm, build_on_mac_x64]
-    steps:
-    - uses: actions/checkout@v4
-    - name: download arm64 zip
-      uses: actions/download-artifact@v4
-      with:
-        name: mac-arm64-zip
-        path: out/make/zip/darwin/arm64
-    - name: download x64 zip
-      uses: actions/download-artifact@v4
-      with:
-        name: mac-x64-zip
-        path: out/make/zip/darwin/x64
-    - name: generate and upload latest-mac.yml
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        PRERELEASE: ${{ inputs.prerelease || 'false' }}
-      run: |
-        node generate-update-yml.js
-        gh release upload v$(node -p "require('./package.json').version") out/make/latest-mac.yml --clobber
-
-  build_on_win:
+  build_win:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
@@ -144,28 +92,68 @@ jobs:
         node -e $js
     - name: install dependencies
       run: npm install
-    - name: build and publish
+    - name: build
+      run: npx electron-forge make
+    - name: upload win artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: win-artifacts
+        path: out/make/*
+
+  publish_mac:
+    runs-on: macos-latest
+    needs: [build_mac]
+    steps:
+    - uses: actions/checkout@v4
+    - name: set dynamic repository
+      run: |
+        REPONAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)
+        REPONAME=${REPONAME//-/_}
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
+    - name: download mac artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: mac-artifacts
+        path: out/make
+    - name: generate and upload latest-mac.yml
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PRERELEASE: ${{ inputs.prerelease || 'false' }}
-      run: npx electron-forge publish
-    - name: upload Squirrel artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: win-squirrel-artifacts
-        path: out/make/squirrel.windows/x64/*
-        if-no-files-found: ignore
+      run: |
+        node generate-update-yml.js
+        gh release create v$(node -p "require('./package.json').version") --draft --prerelease false \
+          "out/make/zip/darwin/arm64/*.zip" "out/make/zip/darwin/x64/*.zip" \
+          "out/make/darwin/arm64/*.dmg" "out/make/darwin/x64/*.dmg" "out/make/latest-mac.yml" || \
+        gh release upload v$(node -p "require('./package.json').version") \
+          out/make/latest-mac.yml --clobber --repo ${{ github.repository }}
 
-  generate_windows_update_yaml:
+  publish_win:
     runs-on: windows-latest
-    needs: [build_on_win]
+    needs: [build_win]
     steps:
     - uses: actions/checkout@v4
-    - name: download Squirrel artifacts
+    - name: set dynamic repository
+      shell: pwsh
+      run: |
+        $parts = "$env:GITHUB_REPOSITORY" -split '/'
+        $owner = $parts[0]
+        $repo = $parts[1]
+        $repoUrl = "https://github.com/$env:GITHUB_REPOSITORY.git"
+        $js = @"
+        let p=require('./package.json');
+        p.repository={type:'git',url:'$repoUrl'};
+        p.build=p.build||{};
+        p.build.publish=[{provider:'github',owner:'$owner',repo:'$repo'}];
+        p.build.win=p.build.win||{};
+        p.build.win.target='squirrel';
+        require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));
+        "@
+        node -e $js
+    - name: download win artifacts
       uses: actions/download-artifact@v4
       with:
-        name: win-squirrel-artifacts
-        path: out/make/squirrel.windows/x64
+        name: win-artifacts
+        path: out/make
     - name: generate and upload latest.yml
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -173,4 +161,8 @@ jobs:
       shell: pwsh
       run: |
         node generate-windows-yml.js
-        gh release upload v$(node -p "require('./package.json').version") out/make/latest.yml --clobber
+        gh release create v$(node -p "require('./package.json').version") --draft --prerelease false \
+          "out/make/squirrel.windows/x64/*.exe" "out/make/squirrel.windows/x64/*.nupkg" \
+          "out/make/squirrel.windows/x64/RELEASES" "out/make/latest.yml" || \
+        gh release upload v$(node -p "require('./package.json').version") \
+          out/make/latest.yml out/make/squirrel.windows/x64/* --clobber --repo ${{ github.repository }}
