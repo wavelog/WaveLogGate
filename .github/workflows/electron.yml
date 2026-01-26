@@ -67,7 +67,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: mac-artifacts
-        path: out/make/*
+        path: out/make
 
   build_win:
     runs-on: windows-latest
@@ -98,7 +98,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: win-artifacts
-        path: out/make/*
+        path: out/make
 
   publish_release:
     runs-on: macos-latest
