@@ -72,11 +72,7 @@ const storage = require('electron-json-storage');
 // Configure auto updater settings
 autoUpdater.autoDownload = true;  // Download updates automatically
 autoUpdater.autoInstallOnAppQuit = true;  // Install on app quit
-autoUpdater.setFeedURL({
-  provider: 'github',
-  owner: 'wavelog',
-  repo: 'WaveLogGate'
-});
+// Note: Feed URL is configured in package.json under build.publish
 
 // Auto-updater event handlers
 autoUpdater.on('checking-for-update', () => {

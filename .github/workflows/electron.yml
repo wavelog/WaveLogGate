@@ -43,6 +43,12 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --arch=arm64
+    - name: upload zip as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: mac-arm64-zip
+        path: out/make/zip/darwin/arm64/*.zip
+        if-no-files-found: ignore
 
   build_on_mac_x64:
     runs-on: macos-14
@@ -62,7 +68,34 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --arch=x64
+    - name: upload zip as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: mac-x64-zip
+        path: out/make/zip/darwin/x64/*.zip
+        if-no-files-found: ignore
 
+  generate_mac_update_yaml:
+    runs-on: macos-latest
+    needs: [build_on_mac_arm, build_on_mac_x64]
+    steps:
+    - uses: actions/checkout@v4
+    - name: download arm64 zip
+      uses: actions/download-artifact@v4
+      with:
+        name: mac-arm64-zip
+        path: out/make/zip/darwin/arm64
+    - name: download x64 zip
+      uses: actions/download-artifact@v4
+      with:
+        name: mac-x64-zip
+        path: out/make/zip/darwin/x64
+    - name: generate and upload latest-mac.yml
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        node generate-update-yml.js
+        gh release upload v$(node -p "require('./package.json').version") out/make/latest-mac.yml --clobber
 
   build_on_win:
     runs-on: windows-latest

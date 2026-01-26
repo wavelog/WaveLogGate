@@ -30,6 +30,10 @@ module.exports = {
 			arch: ['x64','arm64'],
 		},
 		{
+			name: '@electron-forge/maker-zip',
+			platforms: ['darwin'],
+		},
+		{
 			name: '@electron-forge/maker-deb',
 			config: { "bin":"wlgate" },
 			arch: ['x86','armv7l']
