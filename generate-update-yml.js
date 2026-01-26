@@ -1,11 +1,41 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 const packageJson = require('./package.json');
 
 const version = packageJson.version;
 const appName = packageJson.productName || 'WaveLogGate';
 const outDir = path.join(__dirname, 'out', 'make');
+
+// Get repository info dynamically from git remote
+function getRepoInfo() {
+	// In GitHub Actions, use the GITHUB_REPOSITORY environment variable
+	if (process.env.GITHUB_REPOSITORY) {
+		const [owner, name] = process.env.GITHUB_REPOSITORY.split('/');
+		return { owner, name };
+	}
+
+	// Fallback: read from git remote
+	try {
+		const remoteUrl = execSync('git remote get-url origin', { encoding: 'utf8' }).trim();
+		// Handle various git URL formats:
+		// https://github.com/owner/repo.git
+		// git@github.com:owner/repo.git
+		const match = remoteUrl.match(/(?:github\.com[/:]|github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?$/i);
+		if (match) {
+			return { owner: match[1], name: match[2] };
+		}
+	} catch (e) {
+		console.log('Could not determine repository from git remote:', e.message);
+	}
+
+	// Final fallback to defaults
+	return { owner: 'wavelog', name: 'WaveLogGate' };
+}
+
+const repoInfo = getRepoInfo();
+console.log(`Using repository: ${repoInfo.owner}/${repoInfo.name}`);
 
 // Generate SHA512 hash of a file (electron-updater uses SHA512, not SHA256)
 function getFileHash(filePath) {
@@ -53,8 +83,8 @@ function generateMacUpdateYml() {
     const size = getFileSize(zipPath);
     const fileName = path.basename(zipFile);
 
-    // The URL that will be used in the YAML file
-    const url = `https://github.com/wavelog/WaveLogGate/releases/download/v${version}/${fileName}`;
+    // The URL that will be used in the YAML file - DYNAMIC
+    const url = `https://github.com/${repoInfo.owner}/${repoInfo.name}/releases/download/v${version}/${fileName}`;
 
     files.push({
       url,

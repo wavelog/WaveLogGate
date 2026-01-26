@@ -42,9 +42,7 @@
   },
   "build": {
     "publish": [{
-      "provider": "github",
-      "owner": "wavelog",
-      "repo": "WaveLogGate"
+      "provider": "github"
     }]
   }
 }
