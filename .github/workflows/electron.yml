@@ -128,9 +128,18 @@ jobs:
     - name: set dynamic repository
       shell: pwsh
       run: |
-        $repo = "$env:GITHUB_REPOSITORY"
-        $url = "https://github.com/$repo.git"
-        node -e "let p=require('./package.json'); p.repository={type:'git',url:'$url'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
+        $parts = "$env:GITHUB_REPOSITORY" -split '/'
+        $owner = $parts[0]
+        $repo = $parts[1]
+        $repoUrl = "https://github.com/$env:GITHUB_REPOSITORY.git"
+        $js = @"
+        let p=require('./package.json');
+        p.repository={type:'git',url:'$repoUrl'};
+        p.build=p.build||{};
+        p.build.publish=[{provider:'github',owner:'$owner',repo:'$repo'}];
+        require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));
+        "@
+        node -e $js
     - name: install dependencies
       run: npm install
     - name: build and publish
