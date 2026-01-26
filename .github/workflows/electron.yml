@@ -161,8 +161,6 @@ jobs:
       shell: pwsh
       run: |
         node generate-windows-yml.js
-        gh release create v$(node -p "require('./package.json').version") --draft --prerelease false \
-          "out/make/squirrel.windows/x64/*.exe" "out/make/squirrel.windows/x64/*.nupkg" \
-          "out/make/squirrel.windows/x64/RELEASES" "out/make/latest.yml" || \
-        gh release upload v$(node -p "require('./package.json').version") \
-          out/make/latest.yml out/make/squirrel.windows/x64/* --clobber --repo ${{ github.repository }}
+        $version = node -p "require('./package.json').version"
+        $releaseFiles = Get-ChildItem -Path "out/make/squirrel.windows/x64" -Recurse
+        gh release upload "v$version" "out/make/latest.yml" --clobber --repo ${{ github.repository }} 2>$null; if ($LASTEXITCODE -ne 0) { gh release create "v$version" --draft $releaseFiles.FullName "out/make/latest.yml" }
