@@ -115,17 +115,31 @@ jobs:
       with:
         name: mac-artifacts
         path: out/make
-    - name: generate and upload latest-mac.yml
+    - name: generate latest-mac.yml and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PRERELEASE: ${{ inputs.prerelease || 'false' }}
       run: |
         node generate-update-yml.js
-        gh release create v$(node -p "require('./package.json').version") --draft --prerelease false \
-          "out/make/zip/darwin/arm64/*.zip" "out/make/zip/darwin/x64/*.zip" \
-          "out/make/darwin/arm64/*.dmg" "out/make/darwin/x64/*.dmg" "out/make/latest-mac.yml" || \
-        gh release upload v$(node -p "require('./package.json').version") \
-          out/make/latest-mac.yml --clobber --repo ${{ github.repository }}
+        VERSION=$(node -p "require('./package.json').version")
+
+        # Collect all files to upload
+        FILES=""
+        [ -f "out/make/latest-mac.yml" ] && FILES="$FILES out/make/latest-mac.yml"
+        for f in out/make/zip/darwin/arm64/*.zip; do [ -f "$f" ] && FILES="$FILES $f"; done
+        for f in out/make/zip/darwin/x64/*.zip; do [ -f "$f" ] && FILES="$FILES $f"; done
+        for f in out/make/darwin/arm64/*.dmg; do [ -f "$f" ] && FILES="$FILES $f"; done
+        for f in out/make/darwin/x64/*.dmg; do [ -f "$f" ] && FILES="$FILES $f"; done
+
+        echo "Files to upload: $FILES"
+
+        # Try to create release (will fail if exists, which is fine)
+        gh release create "v$VERSION" --draft $FILES || true
+
+        # Upload any files that weren't included (in case release already existed)
+        for f in out/make/zip/darwin/arm64/*.zip out/make/zip/darwin/x64/*.zip out/make/darwin/arm64/*.dmg out/make/darwin/x64/*.dmg out/make/latest-mac.yml; do
+          [ -f "$f" ] && gh release upload "v$VERSION" "$f" --clobber --repo ${{ github.repository }} || true
+        done
 
   publish_win:
     runs-on: windows-latest
@@ -154,7 +168,7 @@ jobs:
       with:
         name: win-artifacts
         path: out/make
-    - name: generate and upload latest.yml
+    - name: generate latest.yml and publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PRERELEASE: ${{ inputs.prerelease || 'false' }}
@@ -162,5 +176,24 @@ jobs:
       run: |
         node generate-windows-yml.js
         $version = node -p "require('./package.json').version"
-        $releaseFiles = Get-ChildItem -Path "out/make/squirrel.windows/x64" -Recurse
-        gh release upload "v$version" "out/make/latest.yml" --clobber --repo ${{ github.repository }} 2>$null; if ($LASTEXITCODE -ne 0) { gh release create "v$version" --draft $releaseFiles.FullName "out/make/latest.yml" }
+
+        # Get all Squirrel files
+        $files = @()
+        if (Test-Path "out/make/latest.yml") { $files += "out/make/latest.yml" }
+        if (Test-Path "out/make/squirrel.windows/x64") {
+          Get-ChildItem -Path "out/make/squirrel.windows/x64" -Recurse -File | ForEach-Object {
+            $files += $_.FullName
+          }
+        }
+
+        Write-Host "Files to upload: $($files -join ', ')"
+
+        # Try to create release with all files (will fail if exists)
+        gh release create "v$version" --draft $files 2>$null
+
+        # Upload each file individually (handles both new and existing releases)
+        foreach ($f in $files) {
+          if (Test-Path $f) {
+            gh release upload "v$version" $f --clobber --repo ${{ github.repository }} 2>$null
+          }
+        }
