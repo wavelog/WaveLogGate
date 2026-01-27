@@ -201,7 +201,7 @@ function createWindow () {
 			contextIsolation: false,
 			backgroundThrottling: false,
 			nodeIntegration: true,
-			devTools: true, // Enable for debugging auto-updater
+			devTools: !app.isPackaged,
 			enableRemoteModule: true,
 			preload: path.join(__dirname, 'preload.js')
 		}
