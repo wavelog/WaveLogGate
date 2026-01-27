@@ -542,8 +542,20 @@ app.on('will-quit', () => {
 });
 
 if (!gotTheLock) {
-	app.quit();
+	// Another instance is running - signal it to quit and relaunch
+	console.log('Another instance is running, requesting it to quit...');
+	// Wait for the old instance to quit, then relaunch
+	setTimeout(() => {
+		app.relaunch();
+		app.exit(0);
+	}, 1000);
 } else {
+	// Handle second instance trying to start - quit to let new instance take over
+	app.on('second-instance', (event, commandLine, workingDirectory) => {
+		console.log('Second instance detected, quitting to let new instance take over...');
+		app.quit();
+	});
+
 	startserver();
 	app.whenReady().then(() => {
 		if (!sleepable) {
