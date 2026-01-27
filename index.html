@@ -121,6 +121,53 @@
 	label svg {
 		cursor: pointer;
 	}
+
+	/* Profile Manager Modal Styles */
+	#profileList {
+		max-height: 300px;
+		overflow-y: auto;
+	}
+
+	.profile-name {
+		font-weight: 500;
+	}
+
+	.list-group-item {
+		border-radius: 0 !important;
+		background-color: #303030;
+		border-color: #727272;
+		color: #c6c6c6;
+	}
+
+	.list-group-item:first-child {
+		border-top-left-radius: 0.25rem !important;
+		border-top-right-radius: 0.25rem !important;
+	}
+
+	.list-group-item:last-child {
+		border-bottom-left-radius: 0.25rem !important;
+		border-bottom-right-radius: 0.25rem !important;
+	}
+
+	.modal-content {
+		background-color: #303030;
+		color: #c6c6c6;
+		border: 1px solid #727272;
+	}
+
+	.modal-header {
+		background-color: #1c1c1c;
+		border-bottom: 1px solid #727272;
+	}
+
+	.modal-footer {
+		background-color: #1c1c1c;
+		border-top: 1px solid #727272;
+	}
+
+	.modal-body {
+		background-color: #303030;
+	}
 </style>
 
 <body>
@@ -243,7 +290,9 @@
 						</div>
 						<div class="col">
 							<div class="mb-4 col-mb-4" style="text-align: left">
-								<button type="button" class="btn btn-primary" id="toggle" title="change config-profile">1</button>
+								<button type="button" class="btn btn-primary" id="toggle" title="Manage profiles">
+									<span id="currentProfileName">Profile 1</span>
+								</button>
 							</div>
 						</div>
 						<div class="col">
@@ -263,6 +312,43 @@
 		</div>
 		<div class="card-footer">
 			<small class="mt-0.5 bottom-right" id="utc"></small>
+		</div>
+	</div>
+
+	<!-- Profile Manager Modal -->
+	<div class="modal fade" id="profileModal" tabindex="-1">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Profile Manager</h5>
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+				</div>
+				<div class="modal-body">
+					<!-- Profile List -->
+					<div id="profileList" class="list-group mb-3"></div>
+
+					<!-- Create New Profile -->
+					<div class="input-group">
+						<input type="text" id="newProfileName" class="form-control"
+							   placeholder="New profile name...">
+						<div class="input-group-append">
+							<button class="btn btn-success" id="btnCreateProfile">
+								Create Profile
+							</button>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-dismiss="modal">
+						Cancel
+					</button>
+					<button type="button" class="btn btn-primary" id="btnSelectProfile">
+						Switch to Selected
+					</button>
+				</div>
+			</div>
 		</div>
 	</div>
 

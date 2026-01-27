@@ -1,4 +1,4 @@
-const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker } = require('electron/main');
+const {app, BrowserWindow, globalShortcut, Notification, powerSaveBlocker, dialog, shell } = require('electron/main');
 const path = require('node:path');
 const {ipcMain} = require('electron')
 const http = require('http');
@@ -64,6 +64,131 @@ let defaultcfg = {
 
 const storage = require('electron-json-storage');
 
+// =============================================================================
+// Simple Update Checker
+// =============================================================================
+
+// Get repository info from package.json
+function getRepoInfo() {
+	try {
+		const pkg = require('./package.json');
+		if (pkg.repository && pkg.repository.url) {
+			const match = pkg.repository.url.match(/github\.com[/:]([^/]+)\/([^/]+)/);
+			if (match) {
+				return { owner: match[1], repo: match[2].replace('.git', '') };
+			}
+		}
+	} catch (e) {
+		console.log('Could not read repository info:', e.message);
+	}
+	// Fallback to defaults
+	return { owner: 'wavelog', repo: 'WaveLogGate' };
+}
+
+// Compare two version strings (returns true if v2 > v1)
+function isNewerVersion(v1, v2) {
+	const parts1 = v1.split('.').map(Number);
+	const parts2 = v2.split('.').map(Number);
+	for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+		const p1 = parts1[i] || 0;
+		const p2 = parts2[i] || 0;
+		if (p2 > p1) return true;
+		if (p2 < p1) return false;
+	}
+	return false;
+}
+
+// Check for updates via GitHub API
+function checkForUpdates() {
+	if (!app.isPackaged) {
+		console.log('Skipping update check (development mode)');
+		return;
+	}
+
+	const repoInfo = getRepoInfo();
+	const currentVersion = app.getVersion();
+
+	console.log(`Checking for updates (current: ${currentVersion})...`);
+
+	const options = {
+		hostname: 'api.github.com',
+		path: `/repos/${repoInfo.owner}/${repoInfo.repo}/releases/latest`,
+		headers: {
+			'User-Agent': 'WaveLogGate'
+		}
+	};
+
+	https.get(options, (res) => {
+		let data = '';
+
+		res.on('data', (chunk) => {
+			data += chunk;
+		});
+
+		res.on('end', () => {
+			try {
+				const release = JSON.parse(data);
+				const latestVersion = release.tag_name.replace(/^v/, '');
+
+				console.log(`Latest version: ${latestVersion}`);
+
+				if (isNewerVersion(currentVersion, latestVersion)) {
+					console.log(`Update available: ${latestVersion}`);
+					showUpdateNotification(latestVersion, release.html_url);
+				} else {
+					console.log('Already up to date');
+				}
+			} catch (e) {
+				console.error('Error parsing release info:', e.message);
+			}
+		});
+	}).on('error', (err) => {
+		console.error('Error checking for updates:', err.message);
+	});
+}
+
+// Show notification about available update
+function showUpdateNotification(version, releaseUrl) {
+	// On Windows, use dialog because notification clicks don't work reliably
+	if (process.platform === 'win32') {
+		dialog.showMessageBox({
+			type: 'info',
+			title: 'WaveLogGate Update Available',
+			message: `A new version is available!`,
+			detail: `Version ${version} is ready to download. You are currently running v${app.getVersion()}.`,
+			buttons: ['Go to Download', 'Later'],
+			defaultId: 0,
+			cancelId: 1
+		}).then(result => {
+			if (result.response === 0) {
+				console.log('Opening download page:', releaseUrl);
+				shell.openExternal(releaseUrl);
+			}
+		});
+		return;
+	}
+
+	// On macOS/Linux, use native notification (click works on macOS)
+	if (Notification.isSupported()) {
+		const notification = new Notification({
+			title: 'WaveLogGate Update Available',
+			body: `Version ${version} is available. Click to download.`,
+			icon: path.join(__dirname, 'icon.png'),
+			silent: false
+		});
+
+		notification.once('click', () => {
+			console.log('Notification clicked, opening:', releaseUrl);
+			shell.openExternal(releaseUrl);
+		});
+
+		notification.show();
+	} else {
+		// Fallback: log to console
+		console.log(`Update available: ${version} - Download from: ${releaseUrl}`);
+	}
+}
+
 app.disableHardwareAcceleration(); 
 
 function createWindow () {
@@ -118,6 +243,16 @@ ipcMain.on("get_config", async (event, arg) => {
 		realcfg.profile=(storedcfg.profile ?? 0);
 	} else {
 		realcfg=storedcfg;
+	}
+	// Migration: Add version and profileNames for dynamic profile system
+	if (!realcfg.version || realcfg.version < 2) {
+		realcfg.version = 2;
+		if (!realcfg.profileNames) {
+			realcfg.profileNames = realcfg.profiles.map((_, i) => `Profile ${i + 1}`);
+		}
+		storage.set('basic', realcfg, function(e) {
+			if (e) throw e;
+		});
 	}
 	if ((arg ?? '') !== '') {
 		realcfg.profile=arg;
@@ -175,6 +310,86 @@ ipcMain.on("close_cert_install_window", async () => {
 	if (certInstallWindow && !certInstallWindow.isDestroyed()) {
 		certInstallWindow.close();
 	}
+});
+
+ipcMain.on("check_for_updates", async (event) => {
+	// Manual update check triggered from renderer
+	checkForUpdates();
+	event.returnValue = true;
+});
+
+// Dynamic Profile System IPC Handlers
+
+ipcMain.on("create_profile", async (event, name) => {
+	let data = storage.getSync('basic');
+
+	const newProfile = {
+		wavelog_url: data.profiles[data.profile || 0].wavelog_url || '',
+		wavelog_key: data.profiles[data.profile || 0].wavelog_key || '',
+		wavelog_id: data.profiles[data.profile || 0].wavelog_id || '0',
+		wavelog_radioname: 'WLGate',
+		wavelog_pmode: true,
+		flrig_host: '127.0.0.1',
+		flrig_port: '12345',
+		flrig_ena: false,
+		hamlib_host: '127.0.0.1',
+		hamlib_port: '4532',
+		hamlib_ena: false,
+		ignore_pwr: false
+	};
+
+	data.profiles.push(newProfile);
+	data.profileNames.push(name || `Profile ${data.profiles.length}`);
+
+	storage.setSync('basic', data);
+
+	event.returnValue = { success: true, index: data.profiles.length - 1 };
+});
+
+ipcMain.on("delete_profile", async (event, index) => {
+	let data = storage.getSync('basic');
+
+	// Prevent deleting if only 2 profiles remain
+	if (data.profiles.length <= 2) {
+		event.returnValue = { success: false, error: 'Minimum 2 profiles required' };
+		return;
+	}
+
+	// Prevent deleting active profile
+	if ((data.profile || 0) === index) {
+		event.returnValue = { success: false, error: 'Cannot delete active profile' };
+		return;
+	}
+
+	data.profiles.splice(index, 1);
+	data.profileNames.splice(index, 1);
+
+	// Adjust active index if needed
+	if ((data.profile || 0) > index) {
+		data.profile = (data.profile || 0) - 1;
+	}
+
+	storage.setSync('basic', data);
+
+	event.returnValue = { success: true };
+});
+
+ipcMain.on("rename_profile", async (event, index, newName) => {
+	let data = storage.getSync('basic');
+	data.profileNames[index] = newName;
+
+	storage.setSync('basic', data);
+
+	event.returnValue = { success: true };
+});
+
+ipcMain.on("switch_profile", async (event, index) => {
+	let data = storage.getSync('basic');
+	data.profile = index;
+
+	storage.setSync('basic', data);
+
+	event.returnValue = { success: true };
 });
 
 function cleanupConnections() {
@@ -327,8 +542,20 @@ app.on('will-quit', () => {
 });
 
 if (!gotTheLock) {
-	app.quit();
+	// Another instance is running - signal it to quit and relaunch
+	console.log('Another instance is running, requesting it to quit...');
+	// Wait for the old instance to quit, then relaunch
+	setTimeout(() => {
+		app.relaunch();
+		app.exit(0);
+	}, 1000);
 } else {
+	// Handle second instance trying to start - quit to let new instance take over
+	app.on('second-instance', (event, commandLine, workingDirectory) => {
+		console.log('Second instance detected, quitting to let new instance take over...');
+		app.quit();
+	});
+
 	startserver();
 	app.whenReady().then(() => {
 		if (!sleepable) {
@@ -343,6 +570,8 @@ if (!gotTheLock) {
 			if (msgbacklog.length>0) {
 				s_mainWindow.webContents.send('updateMsg',msgbacklog.pop());
 			}
+			// Check for updates on startup
+			checkForUpdates();
 		});
 
 		// Show certificate install window if it was pending (before main window was ready)
