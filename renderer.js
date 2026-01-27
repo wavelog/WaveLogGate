@@ -32,18 +32,7 @@ $(document).ready(function() {
 	load_config();
 
 	bt_toggle.addEventListener('click', async () => {
-		if ($("#toggle").html() == '1') {
-			$("#toggle").html("2");
-			active_cfg=1;
-			await load_config();
-		} else {
-			$("#toggle").html("1");
-			active_cfg=0;
-			await load_config();
-		}
-		$("#test").removeClass('btn-success');
-		$("#test").removeClass('btn-danger');
-		$("#test").addClass('btn-primary');
+		openProfileManager();
 	});
 
 	bt_save.addEventListener('click', async () => {
@@ -152,11 +141,36 @@ $(document).ready(function() {
 	$('#radio_type').change(function() {
 		updateRadioFields();
 	});
+
+	// Profile manager modal event listeners
+	$('#btnCreateProfile').click(createProfile);
+	$('#btnSelectProfile').click(switchToSelectedProfile);
+	$('#newProfileName').keypress((e) => {
+		if (e.which === 13) createProfile();
+	});
+
+	// Use event delegation for dynamically created radio buttons
+	$('#profileList').on('change', 'input[type="radio"]', function() {
+		selectedProfileIndex = parseInt($(this).val());
+	});
+
+	// Use event delegation for rename and delete buttons
+	$('#profileList').on('click', '.btn-rename', function() {
+		const index = parseInt($(this).closest('.list-group-item').data('index'));
+		renameProfile(index);
+	});
+
+	$('#profileList').on('click', '.btn-delete', function() {
+		const index = parseInt($(this).closest('.list-group-item').data('index'));
+		deleteProfile(index);
+	});
 });
 
 async function load_config() {
-	cfg=await ipcRenderer.sendSync("get_config", active_cfg);
-	$("#toggle").html((cfg.profile || 0)+1);
+	cfg=await ipcRenderer.sendSync("get_config", '');
+	active_cfg = cfg.profile || 0;
+	const profileName = cfg.profileNames?.[active_cfg] || `Profile ${active_cfg + 1}`;
+	$("#toggle").html(profileName);
 	$("#wavelog_url").val(cfg.profiles[active_cfg].wavelog_url);
 	$("#wavelog_key").val(cfg.profiles[active_cfg].wavelog_key);
 	// $("#wavelog_id").val(cfg.wavelog_id);
@@ -538,4 +552,165 @@ function fillDropdown(data) {
 	} else {
 		select.val(data.length > 0 ? data[0].station_id : null);
 	}
+}
+
+// Dynamic Profile System Functions
+
+let selectedProfileIndex = null;
+
+function openProfileManager() {
+	selectedProfileIndex = cfg.profile || 0;
+	renderProfileList();
+	$('#profileModal').modal('show');
+}
+
+function renderProfileList() {
+	const listEl = $('#profileList');
+	listEl.empty();
+
+	cfg.profiles.forEach((profile, index) => {
+		const isActive = index === (cfg.profile || 0);
+		const name = cfg.profileNames?.[index] || `Profile ${index + 1}`;
+
+		const item = $(`
+			<div class="list-group-item" data-index="${index}">
+				<div class="d-flex align-items-center">
+					<input type="radio" name="profileSelect" value="${index}"
+						   ${index === selectedProfileIndex ? 'checked' : ''}>
+					<span class="ml-2 profile-name">${name}</span>
+					${isActive ? '<span class="badge badge-success ml-2">Active</span>' : ''}
+					<div class="ml-auto">
+						<button class="btn btn-sm btn-outline-secondary btn-rename">Rename</button>
+						<button class="btn btn-sm btn-outline-danger btn-delete"
+								${isActive || cfg.profiles.length <= 2 ? 'disabled' : ''}>
+							Delete
+						</button>
+					</div>
+				</div>
+			</div>
+		`);
+
+		listEl.append(item);
+	});
+}
+
+async function createProfile() {
+	const name = $('#newProfileName').val().trim();
+	if (!name) {
+		alert('Please enter a profile name');
+		return;
+	}
+
+	const result = ipcRenderer.sendSync('create_profile', name);
+	if (result.success) {
+		$('#newProfileName').val('');
+		await load_config();
+		renderProfileList();
+	}
+}
+
+async function deleteProfile(index) {
+	const name = cfg.profileNames?.[index] || `Profile ${index + 1}`;
+	if (!confirm(`Delete "${name}"?`)) return;
+
+	const result = ipcRenderer.sendSync('delete_profile', index);
+	if (result.success) {
+		if ((cfg.profile || 0) === index) {
+			active_cfg = 0;
+		}
+		await load_config();
+		renderProfileList();
+	} else {
+		alert(result.error);
+	}
+}
+
+async function renameProfile(index) {
+	const currentName = cfg.profileNames?.[index] || `Profile ${index + 1}`;
+
+	// Use a simple Bootstrap prompt via the modal
+	const newName = await showRenamePrompt(currentName);
+
+	if (newName && newName.trim() && newName !== currentName) {
+		ipcRenderer.sendSync('rename_profile', index, newName.trim());
+		await load_config();
+		renderProfileList();
+	}
+}
+
+function showRenamePrompt(currentName) {
+	return new Promise((resolve) => {
+		// Create a simple Bootstrap modal for input
+		const modalHtml = `
+			<div class="modal fade" id="renameModal" tabindex="-1">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title">Rename Profile</h5>
+							<button type="button" class="close" data-dismiss="modal">
+								<span>&times;</span>
+							</button>
+						</div>
+						<div class="modal-body">
+							<input type="text" class="form-control" id="renameInput" value="${currentName}">
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-dismiss="modal" id="renameCancel">Cancel</button>
+							<button type="button" class="btn btn-primary" id="renameOk">OK</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		`;
+
+		// Remove any existing rename modal
+		$('#renameModal').remove();
+
+		// Add the new modal
+		$('body').append(modalHtml);
+
+		const $modal = $('#renameModal');
+		const $input = $('#renameInput');
+
+		// Handle OK button
+		$('#renameOk').click(() => {
+			$modal.modal('hide');
+			resolve($input.val());
+		});
+
+		// Handle Cancel button and X button
+		$('#renameCancel, #renameModal .close').click(() => {
+			$modal.modal('hide');
+			resolve(null);
+		});
+
+		// Handle Enter key
+		$input.keypress((e) => {
+			if (e.which === 13) {
+				$modal.modal('hide');
+				resolve($input.val());
+			}
+		});
+
+		// Handle modal hidden event
+		$modal.on('hidden.bs.modal', () => {
+			$('#renameModal').remove();
+		});
+
+		// Show the modal
+		$modal.modal('show');
+		$input.focus().select();
+	});
+}
+
+async function switchToSelectedProfile() {
+	if (selectedProfileIndex === null || selectedProfileIndex === (cfg.profile || 0)) {
+		$('#profileModal').modal('hide');
+		return;
+	}
+
+	ipcRenderer.sendSync('switch_profile', selectedProfileIndex);
+	active_cfg = selectedProfileIndex;
+	await load_config();
+	$('#profileModal').modal('hide');
 }

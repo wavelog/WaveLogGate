@@ -244,6 +244,16 @@ ipcMain.on("get_config", async (event, arg) => {
 	} else {
 		realcfg=storedcfg;
 	}
+	// Migration: Add version and profileNames for dynamic profile system
+	if (!realcfg.version || realcfg.version < 2) {
+		realcfg.version = 2;
+		if (!realcfg.profileNames) {
+			realcfg.profileNames = realcfg.profiles.map((_, i) => `Profile ${i + 1}`);
+		}
+		storage.set('basic', realcfg, function(e) {
+			if (e) throw e;
+		});
+	}
 	if ((arg ?? '') !== '') {
 		realcfg.profile=arg;
 	}
@@ -306,6 +316,80 @@ ipcMain.on("check_for_updates", async (event) => {
 	// Manual update check triggered from renderer
 	checkForUpdates();
 	event.returnValue = true;
+});
+
+// Dynamic Profile System IPC Handlers
+
+ipcMain.on("create_profile", async (event, name) => {
+	let data = storage.getSync('basic');
+
+	const newProfile = {
+		wavelog_url: data.profiles[data.profile || 0].wavelog_url || '',
+		wavelog_key: data.profiles[data.profile || 0].wavelog_key || '',
+		wavelog_id: data.profiles[data.profile || 0].wavelog_id || '0',
+		wavelog_radioname: 'WLGate',
+		wavelog_pmode: true,
+		flrig_host: '127.0.0.1',
+		flrig_port: '12345',
+		flrig_ena: false,
+		hamlib_host: '127.0.0.1',
+		hamlib_port: '4532',
+		hamlib_ena: false,
+		ignore_pwr: false
+	};
+
+	data.profiles.push(newProfile);
+	data.profileNames.push(name || `Profile ${data.profiles.length}`);
+
+	storage.setSync('basic', data);
+
+	event.returnValue = { success: true, index: data.profiles.length - 1 };
+});
+
+ipcMain.on("delete_profile", async (event, index) => {
+	let data = storage.getSync('basic');
+
+	// Prevent deleting if only 2 profiles remain
+	if (data.profiles.length <= 2) {
+		event.returnValue = { success: false, error: 'Minimum 2 profiles required' };
+		return;
+	}
+
+	// Prevent deleting active profile
+	if ((data.profile || 0) === index) {
+		event.returnValue = { success: false, error: 'Cannot delete active profile' };
+		return;
+	}
+
+	data.profiles.splice(index, 1);
+	data.profileNames.splice(index, 1);
+
+	// Adjust active index if needed
+	if ((data.profile || 0) > index) {
+		data.profile = (data.profile || 0) - 1;
+	}
+
+	storage.setSync('basic', data);
+
+	event.returnValue = { success: true };
+});
+
+ipcMain.on("rename_profile", async (event, index, newName) => {
+	let data = storage.getSync('basic');
+	data.profileNames[index] = newName;
+
+	storage.setSync('basic', data);
+
+	event.returnValue = { success: true };
+});
+
+ipcMain.on("switch_profile", async (event, index) => {
+	let data = storage.getSync('basic');
+	data.profile = index;
+
+	storage.setSync('basic', data);
+
+	event.returnValue = { success: true };
 });
 
 function cleanupConnections() {
