@@ -448,35 +448,80 @@ function shutdownApplication() {
         // Close all servers
         if (WServer) {
             console.log('Closing UDP server...');
-            WServer.close();
+            try {
+                WServer.close();
+            } catch (e) {
+                console.error('Error closing UDP server:', e);
+            }
+            WServer = null;
         }
         if (qsyServer) {
             console.log('Closing QSY server...');
-            qsyServer.close();
+            try {
+                qsyServer.close();
+            } catch (e) {
+                console.error('Error closing QSY server:', e);
+            }
+            qsyServer = null;
         }
         if (wsServer) {
             console.log('Closing WebSocket server and clients...');
-            // Close all WebSocket client connections
+            // Close all WebSocket client connections with explicit termination
             wsClients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.close();
+                try {
+                    if (client.readyState === WebSocket.OPEN || client.readyState === WebSocket.CONNECTING) {
+                        client.close(1001, 'Server shutting down');
+                    }
+                } catch (e) {
+                    // Client may already be closed, try terminate
+                    try {
+                        client.terminate();
+                    } catch (terminateError) {
+                        // Ignore, client is gone
+                    }
                 }
             });
             wsClients.clear();
-            wsServer.close();
+            try {
+                wsServer.close();
+            } catch (e) {
+                console.error('Error closing WebSocket server:', e);
+            }
+            // wsServer will be set to null by the 'close' event handler
         }
         if (wssServer) {
-            // Close all Secure WebSocket client connections
+            console.log('Closing Secure WebSocket server and clients...');
+            // Close all Secure WebSocket client connections with explicit termination
             wssClients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.close();
+                try {
+                    if (client.readyState === WebSocket.OPEN || client.readyState === WebSocket.CONNECTING) {
+                        client.close(1001, 'Server shutting down');
+                    }
+                } catch (e) {
+                    // Client may already be closed, try terminate
+                    try {
+                        client.terminate();
+                    } catch (terminateError) {
+                        // Ignore, client is gone
+                    }
                 }
             });
             wssClients.clear();
-            wssServer.close();
-            if (wssHttpsServer) {
-                wssHttpsServer.close();
+            try {
+                wssServer.close();
+            } catch (e) {
+                console.error('Error closing Secure WebSocket server:', e);
             }
+            // wssServer will be set to null by the 'close' event handler
+        }
+        if (wssHttpsServer) {
+            console.log('Closing HTTPS server...');
+            try {
+                wssHttpsServer.close();
+            } catch (e) {
+                console.error('Error closing HTTPS server:', e);
+            }
+            // wssHttpsServer will be set to null by the 'close' event handler
         }
     } catch (error) {
         console.error('Error during server shutdown:', error);
@@ -1342,40 +1387,75 @@ function startserver() {
 
 function startWebSocketServer() {
 	try {
-		wsServer = new WebSocket.Server({ port: 54322, exclusive: true });
+		wsServer = new WebSocket.Server({
+			port: 54322,
+			exclusive: true,
+			clientTracking: true // Enable built-in client tracking
+		});
 
 		wsServer.on('connection', (ws) => {
 			wsClients.add(ws);
 			console.log('WebSocket client connected');
 
-			ws.on('close', () => {
+			// Set up cleanup for this connection
+			const cleanupClient = () => {
 				wsClients.delete(ws);
-			});
+				// Ensure socket is fully cleaned up
+				if (ws.readyState !== WebSocket.CLOSED) {
+					ws.terminate();
+				}
+			};
+
+			ws.on('close', cleanupClient);
 
 			ws.on('error', (error) => {
-				console.error('WebSocket error:', error);
-				wsClients.delete(ws);
+				console.error('WebSocket client error:', error);
+				cleanupClient();
+			});
+
+			// Handle unexpected termination
+			ws.on('unexpected-response', (req, res) => {
+				console.error('WebSocket unexpected response:', res.statusCode);
+				cleanupClient();
 			});
 
 			// Send current radio status on connection
-			ws.send(JSON.stringify({
-				type: 'welcome',
-				message: 'Connected to WaveLogGate WebSocket server'
-			}));
-			broadcastRadioStatus(currentCAT);
+			try {
+				ws.send(JSON.stringify({
+					type: 'welcome',
+					message: 'Connected to WaveLogGate WebSocket server'
+				}));
+				broadcastRadioStatus(currentCAT);
+			} catch (sendError) {
+				console.error('Error sending welcome message:', sendError);
+				cleanupClient();
+			}
 		});
 
 		wsServer.on('error', (error) => {
 			console.error('WebSocket server error:', error);
+			// If server fails critically, nullify it so shutdown knows it's gone
+			if (error.code === 'EADDRINUSE') {
+				console.error('Port 54322 already in use, WebSocket server not started');
+				wsServer = null;
+			}
 		});
 
+		wsServer.on('close', () => {
+			console.log('WebSocket server closed');
+			wsServer = null;
+		});
+
+		console.log('WebSocket server started on port 54322');
 	} catch(e) {
 		console.error('WebSocket server startup error:', e);
+		wsServer = null;
 	}
 }
 
 function startSecureWebSocketServer() {
 	if (!certPaths.key || !certPaths.cert) {
+		console.log('No SSL certificates available, skipping secure WebSocket server');
 		return;
 	}
 
@@ -1386,41 +1466,97 @@ function startSecureWebSocketServer() {
 			cert: certPaths.cert
 		});
 
-		// Listen on port 54323
-		wssHttpsServer.listen(54323);
-
-		// Attach WebSocket server to the HTTPS server
-		wssServer = new WebSocket.Server({ server: wssHttpsServer });
-
-		wssServer.on('connection', (ws) => {
-			wssClients.add(ws);
-
-			ws.on('close', () => {
-				wssClients.delete(ws);
-			});
-
-			ws.on('error', (error) => {
-				wssClients.delete(ws);
-			});
-
-			// Send current radio status on connection
-			ws.send(JSON.stringify({
-				type: 'welcome',
-				message: 'Connected to WaveLogGate Secure WebSocket server'
-			}));
-			broadcastRadioStatus(currentCAT);
-		});
-
-		wssServer.on('error', (error) => {
-			// Silent error handling
-		});
-
+		// Handle HTTPS server errors
 		wssHttpsServer.on('error', (error) => {
-			// Silent error handling
+			console.error('HTTPS server error:', error);
+			if (error.code === 'EADDRINUSE') {
+				console.error('Port 54323 already in use, secure WebSocket server not started');
+				wssHttpsServer = null;
+				wssServer = null;
+			}
+		});
+
+		wssHttpsServer.on('close', () => {
+			console.log('HTTPS server closed');
+			wssHttpsServer = null;
+		});
+
+		// Listen on port 54323 with callback
+		wssHttpsServer.listen(54323, () => {
+			console.log('HTTPS server listening on port 54323');
+
+			// Attach WebSocket server to the HTTPS server
+			wssServer = new WebSocket.Server({ server: wssHttpsServer, clientTracking: true });
+
+			wssServer.on('connection', (ws) => {
+				wssClients.add(ws);
+				console.log('Secure WebSocket client connected');
+
+				// Set up cleanup for this connection
+				const cleanupClient = () => {
+					wssClients.delete(ws);
+					// Ensure socket is fully cleaned up
+					if (ws.readyState !== WebSocket.CLOSED) {
+						ws.terminate();
+					}
+				};
+
+				ws.on('close', cleanupClient);
+
+				ws.on('error', (error) => {
+					console.error('Secure WebSocket client error:', error);
+					cleanupClient();
+				});
+
+				// Handle unexpected termination
+				ws.on('unexpected-response', (req, res) => {
+					console.error('Secure WebSocket unexpected response:', res.statusCode);
+					cleanupClient();
+				});
+
+				// Send current radio status on connection
+				try {
+					ws.send(JSON.stringify({
+						type: 'welcome',
+						message: 'Connected to WaveLogGate Secure WebSocket server'
+					}));
+					broadcastRadioStatus(currentCAT);
+				} catch (sendError) {
+					console.error('Error sending secure welcome message:', sendError);
+					cleanupClient();
+				}
+			});
+
+			wssServer.on('error', (error) => {
+				console.error('Secure WebSocket server error:', error);
+				// If the WebSocket server fails, we need to clean up the HTTPS server too
+				if (wssHttpsServer) {
+					wssHttpsServer.close();
+					wssHttpsServer = null;
+				}
+				wssServer = null;
+			});
+
+			wssServer.on('close', () => {
+				console.log('Secure WebSocket server closed');
+				wssServer = null;
+			});
+
+			console.log('Secure WebSocket server started on port 54323');
 		});
 
 	} catch(e) {
-		// Silent error handling
+		console.error('Secure WebSocket server startup error:', e);
+		// Clean up any partially created resources
+		if (wssHttpsServer) {
+			try {
+				wssHttpsServer.close();
+			} catch (closeError) {
+				// Ignore errors during cleanup
+			}
+			wssHttpsServer = null;
+		}
+		wssServer = null;
 	}
 }
 
