@@ -4,12 +4,21 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build_on_linux:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: set dynamic repository
+      run: |
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: install dependencies
       run: npm install
     - name: build and publish x64
@@ -25,10 +34,13 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --platform linux --arch=arm64
 
-  build_on_mac_arm:
+  build_on_mac:
     runs-on: macos-14
     steps:
     - uses: actions/checkout@v4
+    - name: set dynamic repository
+      run: |
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'https://github.com/${GITHUB_REPOSITORY}.git'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: setup python
       uses: actions/setup-python@v5
       with:
@@ -39,35 +51,24 @@ jobs:
         npm install -g appdmg@0.6.6
     - name: install dependencies
       run: npm install
-    - name: build and publish
+    - name: build and publish arm64
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --arch=arm64
-
-  build_on_mac_x64:
-    runs-on: macos-14
-    steps:
-    - uses: actions/checkout@v4
-    - name: setup python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
-    - name: setup appdmg
-      run: |
-        python3 -m pip install setuptools
-        npm install -g appdmg@0.6.6
-    - name: install dependencies
-      run: npm install
-    - name: build and publish
+    - name: build and publish x64
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npx electron-forge publish --arch=x64
-
 
   build_on_win:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
+    - name: set dynamic repository
+      shell: pwsh
+      run: |
+        $repoUrl = "https://github.com/$env:GITHUB_REPOSITORY.git"
+        node -e "let p=require('./package.json'); p.repository={type:'git',url:'$repoUrl'}; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
     - name: install dependencies
       run: npm install
     - name: build and publish
