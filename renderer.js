@@ -713,4 +713,10 @@ async function switchToSelectedProfile() {
 	active_cfg = selectedProfileIndex;
 	await load_config();
 	$('#profileModal').modal('hide');
+
+	// Reset test button to default state (no test run on new profile yet)
+	$("#test").removeClass('btn-success');
+	$("#test").removeClass('btn-danger');
+	$("#test").addClass('btn-primary');
+	$("#msg2").hide();
 }
