@@ -85,6 +85,14 @@ xattr -d com.apple.quarantine /Applications/WaveLogGate.app
 - **Mode Control**: Enable to let WaveLogGate set radio modes automatically
 - **Ignore Power**: Check if your radio doesn't report power correctly
 
+### FLDigi Setup
+When working with FLDigi and you like to log the QSOs via the Gate, it's important to setup fldigi in a correct manner.
+These settings are working with FLDigi 4.2.11:
+Please ONLY tic the Checkboxes within the screenhot
+
+<img width="807" height="687" alt="image" src="https://github.com/user-attachments/assets/24035547-ef84-4c0d-90fc-eaed8e7a5877" />
+
+
 ### Profile Management
 WaveLogGate supports two complete configuration profiles:
 - Click the profile toggle button (1/2) to switch between profiles
