@@ -1561,6 +1561,9 @@ function startSecureWebSocketServer() {
 }
 
 function broadcastRadioStatus(radioData) {
+	if (!radioData) {
+		return;
+	}
 	currentCAT=radioData;
 	let message = {
 		type: 'radio_status',
