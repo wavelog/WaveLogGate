@@ -25,6 +25,7 @@ let msgbacklog=[];
 let qsyServer; // Dual-mode HTTP/HTTPS server for QSY
 let currentCAT=null;
 var WServer;
+let udpServer = null; // UDP server for ADIF/WSJT-X
 let wsServer;
 let wsClients = new Set();
 let wssServer; // Secure WebSocket server
@@ -60,6 +61,8 @@ let defaultcfg = {
 	hamlib_port: '4532',
 	hamlib_ena: false,
 	ignore_pwr: false,
+	udp_enabled: true,      // Global UDP setting (not per-profile)
+	udp_port: 2333,          // Global UDP port (not per-profile)
 }
 
 const storage = require('electron-json-storage');
@@ -254,6 +257,20 @@ ipcMain.on("get_config", async (event, arg) => {
 			if (e) throw e;
 		});
 	}
+	// Migration: Add global UDP settings (version 3)
+	if (!realcfg.version || realcfg.version < 3) {
+		realcfg.version = 3;
+		// Add global UDP settings if not present
+		if (realcfg.udp_enabled === undefined) {
+			realcfg.udp_enabled = true;
+		}
+		if (realcfg.udp_port === undefined) {
+			realcfg.udp_port = 2333;
+		}
+		storage.set('basic', realcfg, function(e) {
+			if (e) throw e;
+		});
+	}
 	if ((arg ?? '') !== '') {
 		realcfg.profile=arg;
 	}
@@ -316,6 +333,21 @@ ipcMain.on("check_for_updates", async (event) => {
 	// Manual update check triggered from renderer
 	checkForUpdates();
 	event.returnValue = true;
+});
+
+ipcMain.on("restart_udp", async (event) => {
+	// Restart UDP server with current configuration
+	startUdpServer();
+	event.returnValue = true;
+});
+
+ipcMain.on("get_udp_status", async (event) => {
+	// Return current UDP server status (global settings)
+	event.returnValue = {
+		enabled: defaultcfg.udp_enabled !== undefined ? defaultcfg.udp_enabled : true,
+		port: defaultcfg.udp_port || 2333,
+		running: udpServer !== null
+	};
 });
 
 // Dynamic Profile System IPC Handlers
@@ -446,14 +478,14 @@ function shutdownApplication() {
         cleanupConnections();
 
         // Close all servers
-        if (WServer) {
+        if (udpServer) {
             console.log('Closing UDP server...');
             try {
-                WServer.close();
+                udpServer.close();
             } catch (e) {
                 console.error('Error closing UDP server:', e);
             }
-            WServer = null;
+            udpServer = null;
         }
         if (qsyServer) {
             console.log('Closing QSY server...');
@@ -600,6 +632,31 @@ if (!gotTheLock) {
 		console.log('Second instance detected, quitting to let new instance take over...');
 		app.quit();
 	});
+
+	// Load config from storage before starting servers
+	let storedcfg = storage.getSync('basic');
+	if (!(storedcfg.wavelog_url) && !(storedcfg.profiles)) {
+		// No saved config, use defaults
+		defaultcfg.profiles = [defaultcfg];
+		defaultcfg.profile = 0;
+	} else if (!(storedcfg.profiles)) {
+		// Old config without array, convert it
+		defaultcfg.profiles = [storedcfg, defaultcfg];
+		defaultcfg.profile = 0;
+	} else {
+		// Use saved config
+		defaultcfg = storedcfg;
+	}
+
+	// Ensure global UDP settings exist (migration for older configs)
+	if (defaultcfg.udp_enabled === undefined) {
+		defaultcfg.udp_enabled = true;
+	}
+	if (defaultcfg.udp_port === undefined) {
+		defaultcfg.udp_port = 2333;
+	}
+
+	console.log('Loaded config, UDP enabled:', defaultcfg.udp_enabled, 'port:', defaultcfg.udp_port);
 
 	startserver();
 	app.whenReady().then(() => {
@@ -794,15 +851,45 @@ function send2wavelog(o_cfg,adif, dryrun = false) {
 
 }
 
-const ports = [2333]; // Liste der Ports, an die Sie binden möchten
+// Function to start UDP server with configured settings
+function startUdpServer() {
+	// Close existing server if running
+	if (udpServer) {
+		try {
+			udpServer.close();
+		} catch (e) {
+			console.log('Error closing existing UDP server:', e);
+		}
+		udpServer = null;
+	}
 
-ports.forEach(port => {
-	WServer = udp.createSocket('udp4');
-	WServer.on('error', function(err) {
-		tomsg('Some other Tool blocks Port '+port+'. Stop it, and restart this');
+	const udpEnabled = defaultcfg.udp_enabled !== undefined ? defaultcfg.udp_enabled : true;
+	const udpPort = defaultcfg.udp_port || 2333;
+
+	if (!udpEnabled) {
+		console.log('UDP listener disabled');
+		tomsg('UDP Listener disabled');
+		return;
+	}
+
+	console.log('Starting UDP server on port ' + udpPort);
+
+	udpServer = udp.createSocket('udp4');
+
+	udpServer.on('error', function(err) {
+		console.error('UDP server error:', err);
+		if (err.code === 'EADDRINUSE') {
+			tomsg('Port ' + udpPort + ' already in use. Stop the other application and restart.');
+		} else {
+			tomsg('UDP server error: ' + err.message);
+		}
 	});
 
-	WServer.on('message',async function(msg,info){
+	udpServer.on('listening', function() {
+		console.log('UDP server is listening on port ' + udpPort);
+	});
+
+	udpServer.on('message',async function(msg,info){
 		let parsedXML={};
 		let adobject={};
 		if (msg.toString().includes("xml")) {	// detect if incoming String is XML
@@ -816,7 +903,7 @@ ports.forEach(port => {
 					parsedXML.contactinfo.mode[0]='SSB';
 				}
 				adobject = { qsos: [
-					{ 
+					{
 						CALL: parsedXML.contactinfo.call[0],
 						MODE: parsedXML.contactinfo.mode[0],
 						QSO_DATE_OFF: qsodat.d,
@@ -854,7 +941,7 @@ ports.forEach(port => {
 				const outadif=writeADIF(adobject);
 				plainret=await send2wavelog(defaultcfg.profiles[defaultcfg.profile ?? 0],outadif.stringify());
 				x.state=plainret.statusCode;
-				x.payload = JSON.parse(plainret.resString); 
+				x.payload = JSON.parse(plainret.resString);
 			} catch(e) {
 				try {
 					x.payload=JSON.parse(e.resString);
@@ -885,8 +972,11 @@ ports.forEach(port => {
 			tomsg('<div class="alert alert-danger" role="alert">No ADIF detected. WSJT-X: Use ONLY Secondary UDP-Server</div>');
 		}
 	});
-	WServer.bind(port);
-});
+
+	udpServer.bind(udpPort);
+	console.log('UDP server started on port '+udpPort);
+	tomsg('Waiting for QSO / Listening on UDP '+udpPort);
+}
 
 function tomsg(msg) {
 	try {
@@ -1321,7 +1411,8 @@ function startserver() {
 		// Setup SSL certificates
 		const certResult = setupCertificates();
 
-		tomsg('Waiting for QSO / Listening on UDP 2333');
+		// Start UDP server (will check config)
+		startUdpServer();
 
 		// Prompt for certificate installation if:
 		// 1. Cert was just generated, OR
@@ -1381,7 +1472,8 @@ function startserver() {
 		// Start Secure WebSocket server
 		startSecureWebSocketServer();
 	} catch(e) {
-		tomsg('Some other Tool blocks Port 2333 or 54321. Stop it, and restart this');
+		console.error('Error in startserver:', e);
+		tomsg('Some other Tool blocks Port 2333/54321/54322. Stop it, and restart this');
 	}
 }
 

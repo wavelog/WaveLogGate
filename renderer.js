@@ -164,6 +164,11 @@ $(document).ready(function() {
 		const index = parseInt($(this).closest('.list-group-item').data('index'));
 		deleteProfile(index);
 	});
+
+	// Advanced settings modal event listeners
+	$('#advanced').click(openAdvancedModal);
+	$('#advancedSave').click(saveAdvancedSettings);
+	$('#advancedCancel').click(() => $('#advancedModal').modal('hide'));
 });
 
 async function load_config() {
@@ -719,4 +724,53 @@ async function switchToSelectedProfile() {
 	$("#test").removeClass('btn-danger');
 	$("#test").addClass('btn-primary');
 	$("#msg2").hide();
+}
+
+// Advanced Settings Modal Functions
+
+function openAdvancedModal() {
+	$("#udp_enabled").prop('checked', cfg.udp_enabled !== undefined ? cfg.udp_enabled : true);
+	// Set port value (default to 2333 if undefined)
+	$("#udp_port").val(cfg.udp_port || 2333);
+	// Show current UDP status
+	updateUdpStatus();
+
+	$('#advancedModal').modal('show');
+}
+
+async function saveAdvancedSettings() {
+	cfg.udp_enabled = $("#udp_enabled").is(':checked');
+	cfg.udp_port = parseInt($("#udp_port").val()) || 2333;
+
+	if (cfg.profiles[active_cfg].udp_port < 1024 || cfg.profiles[active_cfg].udp_port > 65535) {
+		alert('Port must be between 1024 and 65535');
+		return;
+	}
+
+	cfg = await ipcRenderer.sendSync("set_config", cfg);
+	ipcRenderer.sendSync("restart_udp");
+
+	updateUdpStatus();
+
+	$('#advancedModal').modal('hide');
+}
+
+function updateUdpStatus() {
+	const status = ipcRenderer.sendSync("get_udp_status");
+	const statusDiv = $('#udp_status');
+	const statusText = $('#udp_status_text');
+
+	if (status.enabled) {
+		if (status.running) {
+			statusDiv.removeClass('alert-warning alert-danger').addClass('alert-info');
+			statusText.text('UDP Listener is running on port ' + status.port);
+		} else {
+			statusDiv.removeClass('alert-info alert-danger').addClass('alert-warning');
+			statusText.text('UDP Listener is enabled but not running (port: ' + status.port + ')');
+		}
+	} else {
+		statusDiv.removeClass('alert-info alert-warning').addClass('alert-secondary');
+		statusText.text('UDP Listener is disabled');
+	}
+	statusDiv.show();
 }
