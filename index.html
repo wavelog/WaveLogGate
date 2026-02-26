@@ -99,9 +99,10 @@
 
 	#buttonsRow {
 		position: fixed;
-		bottom: 8px;
-		width: 100%;
-		padding: 10px;
+		bottom: 50px;
+		left: 0;
+		right: 0;
+		padding: 4px 0;
 	}
 
 	#reload_icon {
@@ -282,29 +283,14 @@
 							</div>
 						</div>
 					</div>
-					<div class="row" id="buttonsRow">
-						<div class="col">
-							<div class="mb-4 col-mb-4" style="text-align: left">
-								<button type="button" class="btn btn-primary" id="save">Save</button>
-							</div>
-						</div>
-						<div class="col">
-							<div class="mb-4 col-mb-4" style="text-align: left">
-								<button type="button" class="btn btn-primary" id="toggle" title="Manage profiles">
-									<span id="currentProfileName">Profile 1</span>
-								</button>
-							</div>
-						</div>
-						<div class="col">
-							<div class="mb-4 col-mb-4" style="text-align: center">
-								<button type="button" class="btn btn-primary" id="test">Test</button>
-							</div>
-						</div>
-						<div class="col">
-							<div class="mb-4 col-mb-4" style="text-align: right">
-								<button type="button" class="btn btn-primary" id="quit">Quit</button>
-							</div>
-						</div>
+					<div class="d-flex align-items-center justify-content-center" id="buttonsRow" style="gap: 12px;">
+						<button type="button" class="btn btn-primary" id="save" title="Save">💾</button>
+						<button type="button" class="btn btn-primary" id="toggle" title="Manage profiles">
+							<span id="currentProfileName">Profile 1</span>
+						</button>
+						<button type="button" class="btn btn-primary" id="test">Test</button>
+						<button type="button" class="btn btn-primary" id="advanced" title="Advanced">⚙️</button>
+						<button type="button" class="btn btn-primary" id="quit">Quit</button>
 					</div>
 
 				</div>
@@ -312,6 +298,42 @@
 		</div>
 		<div class="card-footer">
 			<small class="mt-0.5 bottom-right" id="utc"></small>
+		</div>
+	</div>
+
+	<!-- Advanced Settings Modal -->
+	<div class="modal fade" id="advancedModal" tabindex="-1">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Advanced Settings</h5>
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+				</div>
+				<div class="modal-body">
+					<!-- UDP Listener Settings -->
+					<h6>UDP Listener (WSJT-X)</h6>
+					<div class="form-group">
+						<div class="custom-control custom-switch mb-3">
+							<input type="checkbox" class="custom-control-input" id="udp_enabled">
+							<label class="custom-control-label" for="udp_enabled">Enable UDP Listener</label>
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="udp_port">UDP Port</label>
+						<input type="number" class="form-control" id="udp_port" min="1024" max="65535" value="2333">
+						<small class="form-text text-muted">WSJT-X Secondary UDP Server port (default: 2333)</small>
+					</div>
+					<div class="alert alert-info mt-3" id="udp_status" style="display: none;">
+						<small id="udp_status_text"></small>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-dismiss="modal" id="advancedCancel">Cancel</button>
+					<button type="button" class="btn btn-primary" id="advancedSave">Save</button>
+				</div>
+			</div>
 		</div>
 	</div>
 
