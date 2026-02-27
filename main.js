@@ -406,102 +406,63 @@ ipcMain.handle("rotator_park", async (event, profile) => {
 	const currentProfileIndex = defaultcfg.profile ?? 0;
 	defaultcfg.profiles[currentProfileIndex] = profile;
 
+	// Helper: send park commands to rotator
+	const sendParkCommands = (resolve) => {
+		const parkAz = profile.rotator_park_az || 0;
+		const parkEl = profile.rotator_park_el || 0;
+		rotatorSocket.write('S\n');
+		setTimeout(() => {
+			sendToRotator(parkAz, parkEl);
+			resolve({ success: true });
+		}, 500);
+	};
+
 	// Ensure connection and wait for it to be established
 	return new Promise((resolve) => {
 		const target = `${host}:${port}`;
 
 		// Check if already connected to the correct target
 		if (rotatorSocket && !rotatorSocket.destroyed && rotatorConnectedTo === target) {
-			// Already connected, send to park immediately
-			const parkAz = profile.rotator_park_az || 0;
-			const parkEl = profile.rotator_park_el || 0;
-
-			// Send stop command first
-			rotatorSocket.write('S\n');
-
-			// Then send to park position after a short delay
-			setTimeout(() => {
-				sendToRotator(parkAz, parkEl);
-				resolve({ success: true });
-			}, 500);
+			sendParkCommands(resolve);
 			return;
 		}
 
 		// Need to establish connection
 		if (rotatorConnecting) {
-			// Already connecting, wait for it
+			// Already connecting, wait for it with timeout fallback
+			let resolved = false;
 			const checkInterval = setInterval(() => {
 				if (!rotatorConnecting && rotatorSocket && !rotatorSocket.destroyed && rotatorConnectedTo === target) {
-					clearInterval(checkInterval);
-					const parkAz = profile.rotator_park_az || 0;
-					const parkEl = profile.rotator_park_el || 0;
-					rotatorSocket.write('S\n');
-					setTimeout(() => {
-						sendToRotator(parkAz, parkEl);
-						resolve({ success: true });
-					}, 500);
+					cleanup();
+					sendParkCommands(resolve);
 				} else if (!rotatorConnecting && !rotatorSocket) {
-					// Connection attempt failed
-					clearInterval(checkInterval);
+					cleanup();
 					resolve({ success: false, error: 'Connection failed' });
 				}
 			}, 100);
+
+			// Timeout fallback: prevent infinite polling
+			const timeoutId = setTimeout(() => {
+				if (!resolved) {
+					cleanup();
+					resolve({ success: false, error: 'Connection timeout' });
+				}
+			}, 10000); // 10 second timeout for connection waiting
+
+			const cleanup = () => {
+				if (resolved) return;
+				resolved = true;
+				clearInterval(checkInterval);
+				clearTimeout(timeoutId);
+			};
 			return;
 		}
 
-		// Initiate connection
-		rotatorConnecting = true;
-		const client = net.createConnection({ host, port }, () => {
-			rotatorConnecting  = false;
-			rotatorSocket      = client;
-			rotatorConnectedTo = target;
-			client.setTimeout(0);
-
-			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
-				s_mainWindow.webContents.send('rotator_update', { connected: true });
-			}
-
-			const parkAz = profile.rotator_park_az || 0;
-			const parkEl = profile.rotator_park_el || 0;
-
-			// Send stop command first
-			client.write('S\n');
-
-			// Then send to park position after a short delay
-			setTimeout(() => {
-				sendToRotator(parkAz, parkEl);
-				resolve({ success: true });
-			}, 500);
-		});
-
-		client.on('data', rotatorOnData);
-		client.setTimeout(3000, () => { if (rotatorConnecting) client.destroy(); });
-
-		client.on('error', (err) => {
-			closeRotatorSocket();
-			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
-				s_mainWindow.webContents.send('rotator_update', { connected: false, error: err.message });
-			}
-			resolve({ success: false, error: err.message });
-		});
-
-		client.on('close', () => {
-			if (rotatorBusyTimer) { clearTimeout(rotatorBusyTimer); rotatorBusyTimer = null; }
-			if (rotatorSocket === client) { rotatorSocket = null; rotatorConnectedTo = null; }
-			rotatorConnecting    = false;
-			rotatorBusy          = false;
-			rotatorBuffer        = '';
-			rotatorCurrentCmd    = null;
-			rotatorHasSentP      = false;
-			rotatorLastCmdAz     = null;
-			rotatorLastCmdEl     = null;
-			rotatorCurrentAz     = null;
-			rotatorCurrentEl     = null;
-			rotatorStopping      = false;
-			rotatorStopAfterRPRT = null;
-			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
-				s_mainWindow.webContents.send('rotator_update', { connected: false });
-			}
+		// Initiate connection using shared handler
+		rotatorCreateConnection(host, port, {
+			onConnect: (client) => sendParkCommands(resolve),
+			onError: (err) => resolve({ success: false, error: err.message }),
+			onClose: () => resolve({ success: false, error: 'Connection closed' })
 		});
 	});
 });
@@ -2022,21 +1983,13 @@ function rotatorOnData(chunk) {
 	}
 }
 
-function rotatorEnsureConnected() {
-	const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
-	const host = (profile.rotator_host || '').trim();
-	const port = parseInt(profile.rotator_port, 10);
-	if (!host || !port) return;
-
+// Shared rotator socket connection handler
+// Creates and configures a rotctld TCP connection with standard event handlers
+function rotatorCreateConnection(host, port, callbacks = {}) {
 	const target = `${host}:${port}`;
-	if (rotatorSocket && rotatorConnectedTo !== target) closeRotatorSocket();
+	const { onConnect, onError, onClose } = callbacks;
 
-	if (rotatorSocket && !rotatorSocket.destroyed) {
-		rotatorQueueProcess();
-		return;
-	}
-
-	if (rotatorConnecting) return;
+	if (rotatorConnecting) return null;
 	rotatorConnecting = true;
 
 	const client = net.createConnection({ host, port }, () => {
@@ -2047,7 +2000,7 @@ function rotatorEnsureConnected() {
 		if (s_mainWindow && !s_mainWindow.isDestroyed()) {
 			s_mainWindow.webContents.send('rotator_update', { connected: true });
 		}
-		rotatorQueueProcess();
+		if (onConnect) onConnect(client);
 	});
 
 	client.on('data', rotatorOnData);
@@ -2056,8 +2009,9 @@ function rotatorEnsureConnected() {
 	client.on('error', (err) => {
 		closeRotatorSocket();
 		if (s_mainWindow && !s_mainWindow.isDestroyed()) {
-			s_mainWindow.webContents.send('rotator_update', { connected: false });
+			s_mainWindow.webContents.send('rotator_update', { connected: false, error: err.message });
 		}
+		if (onError) onError(err);
 	});
 
 	client.on('close', () => {
@@ -2077,6 +2031,28 @@ function rotatorEnsureConnected() {
 		if (s_mainWindow && !s_mainWindow.isDestroyed()) {
 			s_mainWindow.webContents.send('rotator_update', { connected: false });
 		}
+		if (onClose) onClose();
+	});
+
+	return client;
+}
+
+function rotatorEnsureConnected() {
+	const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
+	const host = (profile.rotator_host || '').trim();
+	const port = parseInt(profile.rotator_port, 10);
+	if (!host || !port) return;
+
+	const target = `${host}:${port}`;
+	if (rotatorSocket && rotatorConnectedTo !== target) closeRotatorSocket();
+
+	if (rotatorSocket && !rotatorSocket.destroyed) {
+		rotatorQueueProcess();
+		return;
+	}
+
+	rotatorCreateConnection(host, port, {
+		onConnect: () => rotatorQueueProcess()
 	});
 }
 
