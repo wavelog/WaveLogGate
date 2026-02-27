@@ -198,6 +198,31 @@
 							<div id="log"></div>
 						</div>
 					</div>
+					<div id="rotator_panel" style="display: none; margin: 4px;">
+						<div style="border: 1px solid #727272; border-radius: 4px; padding: 6px 8px;">
+							<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+								<strong style="font-size: 0.85em;">ROTATOR</strong>
+								<small id="rotator_status" style="color: #888;"></small>
+							</div>
+							<div id="rotator_current" style="font-size: 0.95em; min-height: 1.2em; margin-bottom: 4px; color: #c6c6c6;"></div>
+						<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.85em;">
+								<div class="custom-control custom-radio custom-control-inline" style="margin-right: 0;">
+									<input type="radio" id="rot_off" name="rotator_follow" class="custom-control-input" value="off" checked>
+									<label class="custom-control-label" for="rot_off">Off</label>
+								</div>
+								<div class="custom-control custom-radio custom-control-inline" style="margin-right: 0;">
+									<input type="radio" id="rot_hf" name="rotator_follow" class="custom-control-input" value="hf">
+									<label class="custom-control-label" for="rot_hf">HF</label>
+								</div>
+								<span id="rotator_hf_az" style="color: #aaa; min-width: 55px;"></span>
+								<div class="custom-control custom-radio custom-control-inline" style="margin-right: 0;">
+									<input type="radio" id="rot_sat" name="rotator_follow" class="custom-control-input" value="sat">
+									<label class="custom-control-label" for="rot_sat">SAT</label>
+								</div>
+								<span id="rotator_sat_pos" style="color: #aaa;"></span>
+							</div>
+						</div>
+					</div>
 				</div>
 				<div class="tab-pane" id="config" role="tabpanel" aria-labelledby="config-tab">
 					<div class="row">
@@ -280,6 +305,20 @@
 							<div class="mb-1 col-mb-1">
 								<label for="ignore_pwr">Ignore Power</label>
 								<input type="checkbox" value="1" class="form-control form-control-sm" name="ignore_pwr" id="ignore_pwr" title="log out of wavelog to disregard old value" value="" />
+							</div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col">
+							<div class="mb-2 col-mb-2">
+								<label for="rotator_host">Rotator Host (rotctld)</label>
+								<input type="text" class="form-control form-control-sm" name="rotator_host" id="rotator_host" value="" placeholder="127.0.0.1" />
+							</div>
+						</div>
+						<div class="col">
+							<div class="mb-1 col-mb-1">
+								<label for="rotator_port">Rotator Port</label>
+								<input type="number" class="form-control form-control-sm" name="rotator_port" id="rotator_port" value="" placeholder="4533" />
 							</div>
 						</div>
 					</div>

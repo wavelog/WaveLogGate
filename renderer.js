@@ -69,7 +69,11 @@ $(document).ready(function() {
 				break;
 		}
 
+		cfg.profiles[cfg.profile].rotator_host = $("#rotator_host").val().trim();
+		cfg.profiles[cfg.profile].rotator_port = $("#rotator_port").val().trim();
+
 		cfg=await ipcRenderer.sendSync("set_config", cfg);
+		updateRotatorPanel();
 	});
 
 	bt_quit.addEventListener('click', () => {
@@ -114,7 +118,7 @@ $(document).ready(function() {
 	$("#config-tab").on("click",function() {
 		const obj={};
 		obj.width=430;
-		obj.height=550;
+		obj.height=600;
 		obj.ani=false;
 		resizeme(obj);
 	});
@@ -122,7 +126,7 @@ $(document).ready(function() {
 	$("#status-tab").on("click",function() {
 		const obj={};
 		obj.width=430;
-		obj.height=250;
+		obj.height=getStatusTabHeight();
 		obj.ani=false;
 		resizeme(obj);
 	});
@@ -165,6 +169,11 @@ $(document).ready(function() {
 		deleteProfile(index);
 	});
 
+	// Rotator follow mode
+	$('input[name="rotator_follow"]').on('change', function() {
+		ipcRenderer.sendSync('rotator_set_follow', $(this).val());
+	});
+
 	// Advanced settings modal event listeners
 	$('#advanced').click(openAdvancedModal);
 	$('#advancedSave').click(saveAdvancedSettings);
@@ -194,6 +203,13 @@ async function load_config() {
 	// Update radio fields based on selection
 	updateRadioFields();
 
+	$("#rotator_host").val(cfg.profiles[active_cfg].rotator_host || '');
+	$("#rotator_port").val(cfg.profiles[active_cfg].rotator_port || '4533');
+	// Reset follow toggle to Off when loading a profile
+	$('input[name="rotator_follow"][value="off"]').prop('checked', true);
+	ipcRenderer.sendSync('rotator_set_follow', 'off');
+	updateRotatorPanel();
+
 	if (cfg.profiles[active_cfg].wavelog_key != "" && cfg.profiles[active_cfg].wavelog_url != "") {
 		getStations();
 	}
@@ -205,6 +221,27 @@ async function load_config() {
 function resizeme(size) {
 	x=(ipcRenderer.sendSync("resize", size))
 	return x;
+}
+
+function getStatusTabHeight() {
+	const hasRotator = cfg.profiles && cfg.profiles[active_cfg] &&
+	                   (cfg.profiles[active_cfg].rotator_host || '').trim() !== '';
+	return hasRotator ? 310 : 250;
+}
+
+function updateRotatorPanel() {
+	const hasRotator = (cfg.profiles[active_cfg].rotator_host || '').trim() !== '';
+	if (hasRotator) {
+		const host = cfg.profiles[active_cfg].rotator_host;
+		const port = cfg.profiles[active_cfg].rotator_port || '4533';
+		$('#rotator_status').text(`${host}:${port}`).css('color', '#888');
+		$('#rotator_panel').show();
+	} else {
+		$('#rotator_panel').hide();
+	}
+	if ($('#status').hasClass('active')) {
+		resizeme({ width: 430, height: hasRotator ? 310 : 250, ani: false });
+	}
 }
 
 function select(selector) {
@@ -250,6 +287,30 @@ function updateRadioFields() {
 			break;
 	}
 }
+
+ipcRenderer.on('rotator_bearing', (event, data) => {
+	if (data.type === 'hf') {
+		$('#rotator_hf_az').text(`Az: ${data.az}°`);
+	} else if (data.type === 'sat') {
+		$('#rotator_sat_pos').text(`Az: ${data.az}°  El: ${data.el}°`);
+	}
+});
+
+ipcRenderer.on('rotator_position', (event, data) => {
+	const elStr = (data.el !== undefined && data.el !== 0) ? `  El: ${parseFloat(data.el).toFixed(1)}°` : '';
+	$('#rotator_current').text(`Az: ${parseFloat(data.az).toFixed(1)}°${elStr}`);
+});
+
+ipcRenderer.on('rotator_update', (event, data) => {
+	if (data.connected !== undefined) {
+		const statusEl = $('#rotator_status');
+		if (data.connected) {
+			statusEl.text('✓ connected').css('color', '#28a745');
+		} else {
+			statusEl.text('✗ offline').css('color', '#dc3545');
+		}
+	}
+});
 
 window.TX_API.onUpdateMsg((value) => {
 	$("#msg").html(value);
