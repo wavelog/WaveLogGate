@@ -264,6 +264,11 @@ ipcMain.on("resize", async (event,arg) => {
 	event.returnValue=true;
 });
 
+ipcMain.on("get_window_size", async (event) => {
+	const size = s_mainWindow.getSize();
+	event.returnValue = { width: size[0], height: size[1] };
+});
+
 ipcMain.on("get_config", async (event, arg) => {
 	let storedcfg = storage.getSync('basic');
 	let realcfg={};
@@ -389,6 +394,105 @@ ipcMain.on("rotator_set_follow", (event, mode) => {
 	event.returnValue = true;
 });
 
+ipcMain.handle("rotator_park", async (event, profile) => {
+	// Ensure connection
+	const host = (profile.rotator_host || '').trim();
+	const port = parseInt(profile.rotator_port, 10);
+	if (!host || !port) {
+		return { success: false, error: 'Rotator not configured' };
+	}
+
+	// Ensure we're using the correct profile
+	const currentProfileIndex = defaultcfg.profile ?? 0;
+	defaultcfg.profiles[currentProfileIndex] = profile;
+
+	// Ensure connection and wait for it to be established
+	return new Promise((resolve) => {
+		const target = `${host}:${port}`;
+
+		// Check if already connected to the correct target
+		if (rotatorSocket && !rotatorSocket.destroyed && rotatorConnectedTo === target) {
+			// Already connected, send to park immediately
+			const parkAz = profile.rotator_park_az || 0;
+			const parkEl = profile.rotator_park_el || 0;
+
+			// Send stop command first
+			rotatorSocket.write('S\n');
+
+			// Then send to park position after a short delay
+			setTimeout(() => {
+				sendToRotator(parkAz, parkEl);
+				resolve({ success: true });
+			}, 500);
+			return;
+		}
+
+		// Need to establish connection
+		if (rotatorConnecting) {
+			// Already connecting, wait for it
+			const checkInterval = setInterval(() => {
+				if (!rotatorConnecting && rotatorSocket && !rotatorSocket.destroyed) {
+					clearInterval(checkInterval);
+					const parkAz = profile.rotator_park_az || 0;
+					const parkEl = profile.rotator_park_el || 0;
+					rotatorSocket.write('S\n');
+					setTimeout(() => {
+						sendToRotator(parkAz, parkEl);
+						resolve({ success: true });
+					}, 500);
+				}
+			}, 100);
+			return;
+		}
+
+		// Initiate connection
+		rotatorConnecting = true;
+		const client = net.createConnection({ host, port }, () => {
+			rotatorConnecting  = false;
+			rotatorSocket      = client;
+			rotatorConnectedTo = target;
+			client.setTimeout(0);
+
+			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+				s_mainWindow.webContents.send('rotator_update', { connected: true });
+			}
+
+			const parkAz = profile.rotator_park_az || 0;
+			const parkEl = profile.rotator_park_el || 0;
+
+			// Send stop command first
+			client.write('S\n');
+
+			// Then send to park position after a short delay
+			setTimeout(() => {
+				sendToRotator(parkAz, parkEl);
+				resolve({ success: true });
+			}, 500);
+		});
+
+		client.on('data', rotatorOnData);
+
+		client.on('error', (err) => {
+			rotatorConnecting = false;
+			rotatorSocket = null;
+			rotatorConnectedTo = null;
+			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+				s_mainWindow.webContents.send('rotator_update', { connected: false, error: err.message });
+			}
+			resolve({ success: false, error: err.message });
+		});
+
+		client.on('close', () => {
+			rotatorSocket = null;
+			rotatorConnectedTo = null;
+			rotatorConnecting = false;
+			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+				s_mainWindow.webContents.send('rotator_update', { connected: false });
+			}
+		});
+	});
+});
+
 ipcMain.on("restart_udp", async (event) => {
 	// Restart UDP server with current configuration
 	startUdpServer();
@@ -424,6 +528,10 @@ ipcMain.on("create_profile", async (event, name) => {
 		ignore_pwr: false,
 		rotator_host: '',
 		rotator_port: '4533',
+		rotator_threshold_az: 2,
+		rotator_threshold_el: 2,
+		rotator_park_az: 0,
+		rotator_park_el: 0,
 	};
 
 	data.profiles.push(newProfile);
@@ -1780,16 +1888,21 @@ function rotatorQueueProcess() {
 	if (rotatorPendingSet) {
 		const { az, el } = rotatorPendingSet;
 
-		// Minimum movement threshold: only move if position differs by at least 1 degree
+		// Minimum movement threshold: only move if position differs by threshold
 		// Skip check if we don't have current position yet (first move always allowed)
 		if (rotatorCurrentAz !== null) {
+			// Get threshold from profile
+			const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
+			const thresholdAz = profile.rotator_threshold_az || 2;
+			const thresholdEl = profile.rotator_threshold_el || 2;
+
 			// Handle azimuth wraparound (359° → 1° = 2° difference, not 358°)
 			let azDiff = Math.abs(az - rotatorCurrentAz);
 			if (azDiff > 180) azDiff = 360 - azDiff;
 
 			const elDiff = el !== 0 ? Math.abs(el - (rotatorCurrentEl || 0)) : 0;
 			// For HF mode (el=0), only check azimuth. For SAT mode, check both.
-			if (azDiff < 1 && elDiff < 1) {
+			if (azDiff < thresholdAz && elDiff < thresholdEl) {
 				// Position too close, skip movement
 				rotatorPendingSet = null;
 				return;
