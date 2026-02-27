@@ -431,7 +431,7 @@ ipcMain.handle("rotator_park", async (event, profile) => {
 		if (rotatorConnecting) {
 			// Already connecting, wait for it
 			const checkInterval = setInterval(() => {
-				if (!rotatorConnecting && rotatorSocket && !rotatorSocket.destroyed) {
+				if (!rotatorConnecting && rotatorSocket && !rotatorSocket.destroyed && rotatorConnectedTo === target) {
 					clearInterval(checkInterval);
 					const parkAz = profile.rotator_park_az || 0;
 					const parkEl = profile.rotator_park_el || 0;
@@ -440,6 +440,10 @@ ipcMain.handle("rotator_park", async (event, profile) => {
 						sendToRotator(parkAz, parkEl);
 						resolve({ success: true });
 					}, 500);
+				} else if (!rotatorConnecting && !rotatorSocket) {
+					// Connection attempt failed
+					clearInterval(checkInterval);
+					resolve({ success: false, error: 'Connection failed' });
 				}
 			}, 100);
 			return;
@@ -471,11 +475,10 @@ ipcMain.handle("rotator_park", async (event, profile) => {
 		});
 
 		client.on('data', rotatorOnData);
+		client.setTimeout(3000, () => { if (rotatorConnecting) client.destroy(); });
 
 		client.on('error', (err) => {
-			rotatorConnecting = false;
-			rotatorSocket = null;
-			rotatorConnectedTo = null;
+			closeRotatorSocket();
 			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
 				s_mainWindow.webContents.send('rotator_update', { connected: false, error: err.message });
 			}
@@ -483,9 +486,19 @@ ipcMain.handle("rotator_park", async (event, profile) => {
 		});
 
 		client.on('close', () => {
-			rotatorSocket = null;
-			rotatorConnectedTo = null;
-			rotatorConnecting = false;
+			if (rotatorBusyTimer) { clearTimeout(rotatorBusyTimer); rotatorBusyTimer = null; }
+			if (rotatorSocket === client) { rotatorSocket = null; rotatorConnectedTo = null; }
+			rotatorConnecting    = false;
+			rotatorBusy          = false;
+			rotatorBuffer        = '';
+			rotatorCurrentCmd    = null;
+			rotatorHasSentP      = false;
+			rotatorLastCmdAz     = null;
+			rotatorLastCmdEl     = null;
+			rotatorCurrentAz     = null;
+			rotatorCurrentEl     = null;
+			rotatorStopping      = false;
+			rotatorStopAfterRPRT = null;
 			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
 				s_mainWindow.webContents.send('rotator_update', { connected: false });
 			}
@@ -1993,10 +2006,12 @@ function rotatorOnData(chunk) {
 		if (hasRPRT || nums.length >= 2) {
 			const az = nums[0];
 			const el = nums.length >= 2 ? nums[1] : 0;
-			rotatorCurrentAz = az;
-			rotatorCurrentEl = el;
+			if (nums.length >= 2) {
+				rotatorCurrentAz = az;
+				rotatorCurrentEl = el;
+			}
 			rotatorClearBusy();
-			if (az !== undefined && !isNaN(az) && s_mainWindow && !s_mainWindow.isDestroyed()) {
+			if (nums.length >= 2 && s_mainWindow && !s_mainWindow.isDestroyed()) {
 				s_mainWindow.webContents.send('rotator_position', { az, el });
 			}
 			rotatorQueueProcess();
@@ -2059,6 +2074,9 @@ function rotatorEnsureConnected() {
 		rotatorCurrentEl   = null;
 		rotatorStopping    = false;
 		rotatorStopAfterRPRT = null;
+		if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+			s_mainWindow.webContents.send('rotator_update', { connected: false });
+		}
 	});
 }
 
