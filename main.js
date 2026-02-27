@@ -394,9 +394,7 @@ ipcMain.on("rotator_set_follow", (event, mode) => {
 		rotatorStopping    = false;
 		rotatorStopAfterRPRT = null;
 		// Write S directly — bypasses queue, instant halt regardless of rotatorBusy
-		if (rotatorSocket && !rotatorSocket.destroyed) {
-			rotatorSocket.write('S\n');
-		}
+		rotatorSafeWrite('S\n');
 	} else {
 		// Connect now so the first P command goes out without a connection delay.
 		// Don't send p yet — some backends' p hangs until a P has been sent first.
@@ -424,7 +422,7 @@ ipcMain.handle("rotator_park", async (event, profile) => {
 	const sendParkCommands = (resolve) => {
 		const parkAz = profile.rotator_park_az || 0;
 		const parkEl = profile.rotator_park_el || 0;
-		rotatorSocket.write('S\n');
+		rotatorSafeWrite('S\n');
 		setTimeout(() => {
 			sendToRotator(parkAz, parkEl);
 			resolve({ success: true });
@@ -1869,6 +1867,27 @@ function rotatorClearBusy() {
 	rotatorBuffer     = '';
 }
 
+// Safe write to rotator socket with error handling
+// Closes socket and returns false on error, true on success
+function rotatorSafeWrite(command) {
+	if (!rotatorSocket || rotatorSocket.destroyed) {
+		return false;
+	}
+	try {
+		rotatorSocket.write(command, (err) => {
+			if (err) {
+				console.error('Rotator write error:', err.message);
+				closeRotatorSocket();
+			}
+		});
+		return true;
+	} catch (e) {
+		console.error('Rotator write exception:', e.message);
+		closeRotatorSocket();
+		return false;
+	}
+}
+
 function rotatorQueueProcess() {
 	if (rotatorBusy || !rotatorSocket || rotatorSocket.destroyed) {
 		return;
@@ -1923,7 +1942,7 @@ function rotatorQueueProcess() {
 			rotatorStopAfterRPRT = { az, el };
 			// Don't clear rotatorPendingSet yet — it becomes the P we send after S completes
 			rotatorSetBusy('set');  // Use 'set' type for S (same RPRT format)
-			rotatorSocket.write('S\n');
+			rotatorSafeWrite('S\n');
 			return;  // Will resume after S's RPRT arrives
 		}
 
@@ -1934,11 +1953,11 @@ function rotatorQueueProcess() {
 		rotatorLastCmdAz   = az;
 		rotatorLastCmdEl   = el;
 		rotatorSetBusy('set');
-		rotatorSocket.write(`P ${az} ${el}\n`);
+		rotatorSafeWrite(`P ${az} ${el}\n`);
 	} else if (rotatorPollPending) {
 		rotatorPollPending = false;
 		rotatorSetBusy('get');
-		rotatorSocket.write('p\n');
+		rotatorSafeWrite('p\n');
 	}
 }
 
@@ -1960,7 +1979,7 @@ function rotatorOnData(chunk) {
 				rotatorLastCmdAz      = az;
 				rotatorLastCmdEl      = el;
 				rotatorSetBusy('set');
-				rotatorSocket.write(`P ${az} ${el}\n`);
+				rotatorSafeWrite(`P ${az} ${el}\n`);
 				rotatorBuffer = '';  // Clear buffer after consuming S's RPRT
 				return;
 			}
@@ -2088,7 +2107,7 @@ function sendToRotator(az, el) {
 		rotatorLastCmdEl   = pEl;
 		rotatorClearBusy(); // abandon 'get' state (buffer cleared)
 		rotatorSetBusy('set');
-		rotatorSocket.write(`P ${pAz} ${pEl}\n`);
+		rotatorSafeWrite(`P ${pAz} ${pEl}\n`);
 		return;
 	}
 
