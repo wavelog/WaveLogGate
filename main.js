@@ -63,6 +63,20 @@ let rotatorCurrentEl   = null;    // current real position from polls
 let rotatorStopping    = false;   // true when we've sent S and are waiting for RPRT before sending P
 let rotatorStopAfterRPRT = null;  // { az, el } — P to send after S completes
 
+// Rotator timing constants (milliseconds)
+const ROTATOR_BUSY_WATCHDOG_MS = 5000;     // watchdog: clears stuck rotatorBusy
+const ROTATOR_POLL_INTERVAL_MS = 2000;     // position poll interval
+const ROTATOR_POLL_SUPPRESSION_MS = 3000;  // suppress polls for this long after P command
+const ROTATOR_CONNECTION_TIMEOUT_MS = 3000;// socket connection timeout
+const ROTATOR_PARK_COMMAND_DELAY_MS = 500; // delay between S and P in park sequence
+const ROTATOR_PARK_WAIT_TIMEOUT_MS = 10000;// timeout waiting for connection in park
+const ROTATOR_WS_RATE_LIMIT_MS = 150;      // minimum time between WebSocket-triggered commands
+
+// Rate limiting state for WebSocket commands
+let rotatorLastWsCommandTime = 0;
+let rotatorPendingWsCommand = null;        // { az, el, type } — pending rate-limited command
+let rotatorWsRateLimitTimer = null;        // timer for sending pending command
+
 // Certificate paths for HTTPS server
 let certPaths = {
 	key: null,
@@ -414,7 +428,7 @@ ipcMain.handle("rotator_park", async (event, profile) => {
 		setTimeout(() => {
 			sendToRotator(parkAz, parkEl);
 			resolve({ success: true });
-		}, 500);
+		}, ROTATOR_PARK_COMMAND_DELAY_MS);
 	};
 
 	// Ensure connection and wait for it to be established
@@ -447,7 +461,7 @@ ipcMain.handle("rotator_park", async (event, profile) => {
 					cleanup();
 					resolve({ success: false, error: 'Connection timeout' });
 				}
-			}, 10000); // 10 second timeout for connection waiting
+			}, ROTATOR_PARK_WAIT_TIMEOUT_MS);
 
 			const cleanup = () => {
 				if (resolved) return;
@@ -614,6 +628,7 @@ function shutdownApplication() {
 
         // Clean up rotator poll and socket
         if (rotatorPollTimer) { clearInterval(rotatorPollTimer); rotatorPollTimer = null; }
+        if (rotatorWsRateLimitTimer) { clearTimeout(rotatorWsRateLimitTimer); rotatorWsRateLimitTimer = null; }
         closeRotatorSocket();
 
         // Clean up TCP connections
@@ -1833,7 +1848,7 @@ function closeRotatorSocket() {
 	}
 }
 
-// Set busy state and arm 5-second watchdog to prevent permanent stuck state.
+// Set busy state and arm watchdog to prevent permanent stuck state.
 function rotatorSetBusy(cmd) {
 	rotatorBusy       = true;
 	rotatorCurrentCmd = cmd;
@@ -1844,7 +1859,7 @@ function rotatorSetBusy(cmd) {
 		rotatorBuffer     = '';
 		rotatorBusyTimer  = null;
 		rotatorQueueProcess();
-	}, 5000);
+	}, ROTATOR_BUSY_WATCHDOG_MS);
 }
 
 function rotatorClearBusy() {
@@ -1874,8 +1889,9 @@ function rotatorQueueProcess() {
 			let azDiff = Math.abs(az - rotatorCurrentAz);
 			if (azDiff > 180) azDiff = 360 - azDiff;
 
-			const elDiff = el !== 0 ? Math.abs(el - (rotatorCurrentEl || 0)) : 0;
-			// For HF mode (el=0), only check azimuth. For SAT mode, check both.
+			// Elevation difference - always calculate, don't skip for el=0
+			// This allows proper threshold checking when park elevation is 0°
+			const elDiff = Math.abs(el - (rotatorCurrentEl || 0));
 			if (azDiff < thresholdAz && elDiff < thresholdEl) {
 				// Position too close, skip movement
 				rotatorPendingSet = null;
@@ -2004,7 +2020,7 @@ function rotatorCreateConnection(host, port, callbacks = {}) {
 	});
 
 	client.on('data', rotatorOnData);
-	client.setTimeout(3000, () => { if (rotatorConnecting) client.destroy(); });
+	client.setTimeout(ROTATOR_CONNECTION_TIMEOUT_MS, () => { if (rotatorConnecting) client.destroy(); });
 
 	client.on('error', (err) => {
 		closeRotatorSocket();
@@ -2085,39 +2101,87 @@ function startRotatorPoll() {
 		if (rotatorFollowMode === 'off') return;
 		if (!rotatorHasSentP) return;
 		const msSinceP = Date.now() - rotatorLastPTime;
-		if (msSinceP < 3000) return;
+		if (msSinceP < ROTATOR_POLL_SUPPRESSION_MS) return;
 		const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
 		if (!(profile.rotator_host || '').trim()) return;
 		if (!rotatorPollPending) {
 			rotatorPollPending = true;
 			rotatorEnsureConnected();
 		}
-	}, 2000);
+	}, ROTATOR_POLL_INTERVAL_MS);
+}
+
+// Send rotator command with rate limiting to prevent overwhelming rotctld
+function sendRateLimitedRotatorCommand(az, el, type) {
+	const now = Date.now();
+	const timeSinceLastCommand = now - rotatorLastWsCommandTime;
+
+	// Store the latest command (overwrites any previous pending command)
+	rotatorPendingWsCommand = { az, el, type };
+
+	// If enough time has passed, send immediately
+	if (timeSinceLastCommand >= ROTATOR_WS_RATE_LIMIT_MS) {
+		// Clear any existing rate limit timer
+		if (rotatorWsRateLimitTimer) {
+			clearTimeout(rotatorWsRateLimitTimer);
+			rotatorWsRateLimitTimer = null;
+		}
+
+		// Send the command
+		rotatorLastWsCommandTime = now;
+		const cmd = rotatorPendingWsCommand;
+		rotatorPendingWsCommand = null;
+		sendToRotator(cmd.az, cmd.el);
+	} else if (!rotatorWsRateLimitTimer) {
+		// Not enough time has passed and no timer is set, create one
+		const delay = ROTATOR_WS_RATE_LIMIT_MS - timeSinceLastCommand;
+		rotatorWsRateLimitTimer = setTimeout(() => {
+			if (rotatorPendingWsCommand) {
+				rotatorLastWsCommandTime = Date.now();
+				const cmd = rotatorPendingWsCommand;
+				rotatorPendingWsCommand = null;
+				sendToRotator(cmd.az, cmd.el);
+			}
+			rotatorWsRateLimitTimer = null;
+		}, delay);
+	}
+	// If timer already exists, the new command is already stored in rotatorPendingWsCommand
+	// and will be sent when the timer fires
 }
 
 function handleWsIncomingMessage(data) {
 	try {
 		const msg = JSON.parse(data.toString());
+
 		if (msg.type === 'lookup_result' && msg.payload && msg.payload.azimuth !== undefined) {
-			const az = msg.payload.azimuth;
+			const az = parseFloat(msg.payload.azimuth);
+			// Validate azimuth
+			if (typeof az !== 'number' || isNaN(az) || az < 0 || az > 360) {
+				return; // Invalid azimuth, ignore message
+			}
+
 			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
 				s_mainWindow.webContents.send('rotator_bearing', { type: 'hf', az });
 			}
 			if (rotatorFollowMode === 'hf') {
-				sendToRotator(az, 0);
+				sendRateLimitedRotatorCommand(az, 0, 'hf');
 			}
 		} else if (msg.type === 'satellite_position' && msg.data) {
 			const az = parseFloat(msg.data.azimuth);
 			const el = parseFloat(msg.data.elevation);
+			// Validate azimuth and elevation
+			if (typeof az !== 'number' || isNaN(az) || az < 0 || az > 360) return;
+			if (typeof el !== 'number' || isNaN(el) || el < 0 || el > 90) return;
+
 			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
 				s_mainWindow.webContents.send('rotator_bearing', { type: 'sat', az, el });
 			}
 			if (rotatorFollowMode === 'sat') {
-				sendToRotator(az, el);
+				sendRateLimitedRotatorCommand(az, el, 'sat');
 			}
 		}
 	} catch (e) {
-		// Not JSON or unknown message type, ignore
+		// Not JSON or unknown message type, ignore silently
 	}
 }
 
