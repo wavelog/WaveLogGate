@@ -29,7 +29,7 @@ let lastCat=0;
 
 // Window size constants
 const WINDOW_WIDTH = 430;
-const TAB_HEIGHT_CONFIG = 500;
+const TAB_HEIGHT_CONFIG = 550;
 const TAB_HEIGHT_STATUS = 320;
 const MODAL_HEIGHT = 600;
 
