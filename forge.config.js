@@ -27,6 +27,7 @@ function getRepoInfo() {
 }
 
 const repoInfo = getRepoInfo();
+const shouldSign = process.env.APPLE_SIGN === 'true';
 
 module.exports = {
 	packagerConfig: {
@@ -38,7 +39,21 @@ module.exports = {
 		productName: "WaveLogGate",
 		win32Metadata: {
 			companyName: "DJ7NT"
-		}
+		},
+		...(shouldSign ? {
+			osxSign: {
+				'hardened-runtime': true,
+				'gatekeeper-assess': false,
+				entitlements: 'entitlements.plist',
+				'entitlements-inherit': 'entitlements.plist',
+			},
+			osxNotarize: {
+				tool: 'notarytool',
+				appleId: process.env.APPLE_ID,
+				appleIdPassword: process.env.APPLE_ID_PASSWORD,
+				teamId: process.env.APPLE_TEAM_ID,
+			},
+		} : {}),
 	},
 	publishers: [
 		{
