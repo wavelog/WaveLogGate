@@ -34,6 +34,48 @@ let wssHttpsServer; // HTTPS server for secure WebSocket
 let isShuttingDown = false;
 let activeConnections = new Set(); // Track active TCP connections
 let activeHttpRequests = new Set(); // Track active HTTP requests for cancellation
+let rotatorFollowMode = 'off'; // 'off', 'hf', 'sat' — runtime only, not persisted
+
+// Rotator state
+// Protocol (observed on real hardware):
+//   P az el\n  →  [current_az\ncurrent_el\n] × N  then  RPRT 0\n
+//   p\n        →  az\nel\n  (no RPRT)  — but HANGS with no response when idle on some backends
+//   S\n        →  RPRT 0\n  (halt — sent directly, bypasses queue)
+//
+// Important: some backends never respond to `p` until at least one `P` has been sent.
+// rotatorHasSentP gates the poll timer so we don't block the queue on connect.
+let rotatorSocket      = null;
+let rotatorConnecting  = false;
+let rotatorConnectedTo = null;
+let rotatorBusy        = false;   // waiting for a response
+let rotatorBusyTimer   = null;    // watchdog — clears stuck rotatorBusy after 5 s
+let rotatorBuffer      = '';      // accumulates incoming bytes
+let rotatorCurrentCmd  = null;    // 'set' | 'get'
+let rotatorPendingSet  = null;    // { az, el } — latest P not yet sent
+let rotatorPollPending = false;   // p query queued
+let rotatorPollTimer   = null;
+let rotatorHasSentP    = false;   // gate: don't poll until first P has been sent
+let rotatorLastPTime   = 0;       // ms timestamp of last P send — poll suppressed for 3 s after
+let rotatorLastCmdAz   = null;    // last commanded azimuth — for direction reversal detection
+let rotatorLastCmdEl   = null;    // last commanded elevation — for direction reversal detection
+let rotatorCurrentAz   = null;    // current real position from polls
+let rotatorCurrentEl   = null;    // current real position from polls
+let rotatorStopping    = false;   // true when we've sent S and are waiting for RPRT before sending P
+let rotatorStopAfterRPRT = null;  // { az, el } — P to send after S completes
+
+// Rotator timing constants (milliseconds)
+const ROTATOR_BUSY_WATCHDOG_MS = 5000;     // watchdog: clears stuck rotatorBusy
+const ROTATOR_POLL_INTERVAL_MS = 2000;     // position poll interval
+const ROTATOR_POLL_SUPPRESSION_MS = 3000;  // suppress polls for this long after P command
+const ROTATOR_CONNECTION_TIMEOUT_MS = 3000;// socket connection timeout
+const ROTATOR_PARK_COMMAND_DELAY_MS = 500; // delay between S and P in park sequence
+const ROTATOR_PARK_WAIT_TIMEOUT_MS = 10000;// timeout waiting for connection in park
+const ROTATOR_WS_RATE_LIMIT_MS = 150;      // minimum time between WebSocket-triggered commands
+
+// Rate limiting state for WebSocket commands
+let rotatorLastWsCommandTime = 0;
+let rotatorPendingWsCommand = null;        // { az, el, type } — pending rate-limited command
+let rotatorWsRateLimitTimer = null;        // timer for sending pending command
 
 // Certificate paths for HTTPS server
 let certPaths = {
@@ -236,6 +278,11 @@ ipcMain.on("resize", async (event,arg) => {
 	event.returnValue=true;
 });
 
+ipcMain.on("get_window_size", async (event) => {
+	const size = s_mainWindow.getSize();
+	event.returnValue = { width: size[0], height: size[1] };
+});
+
 ipcMain.on("get_config", async (event, arg) => {
 	let storedcfg = storage.getSync('basic');
 	let realcfg={};
@@ -335,6 +382,103 @@ ipcMain.on("check_for_updates", async (event) => {
 	event.returnValue = true;
 });
 
+ipcMain.on("rotator_set_follow", (event, mode) => {
+	rotatorFollowMode = mode;
+	if (mode === 'off') {
+		rotatorPendingSet  = null;   // discard any queued move
+		rotatorPollPending = false;  // no more polls
+		rotatorLastCmdAz   = null;   // clear tracked position
+		rotatorLastCmdEl   = null;
+		rotatorCurrentAz   = null;
+		rotatorCurrentEl   = null;
+		rotatorStopping    = false;
+		rotatorStopAfterRPRT = null;
+		// Write S directly — bypasses queue, instant halt regardless of rotatorBusy
+		rotatorSafeWrite('S\n');
+	} else {
+		// Connect now so the first P command goes out without a connection delay.
+		// Don't send p yet — some backends' p hangs until a P has been sent first.
+		const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
+		if ((profile.rotator_host || '').trim()) {
+			rotatorEnsureConnected();
+		}
+	}
+	event.returnValue = true;
+});
+
+ipcMain.handle("rotator_park", async (event, profile) => {
+	// Ensure connection
+	const host = (profile.rotator_host || '').trim();
+	const port = parseInt(profile.rotator_port, 10);
+	if (!host || !port) {
+		return { success: false, error: 'Rotator not configured' };
+	}
+
+	// Ensure we're using the correct profile
+	const currentProfileIndex = defaultcfg.profile ?? 0;
+	defaultcfg.profiles[currentProfileIndex] = profile;
+
+	// Helper: send park commands to rotator
+	const sendParkCommands = (resolve) => {
+		const parkAz = profile.rotator_park_az || 0;
+		const parkEl = profile.rotator_park_el || 0;
+		rotatorSafeWrite('S\n');
+		setTimeout(() => {
+			sendToRotator(parkAz, parkEl);
+			resolve({ success: true });
+		}, ROTATOR_PARK_COMMAND_DELAY_MS);
+	};
+
+	// Ensure connection and wait for it to be established
+	return new Promise((resolve) => {
+		const target = `${host}:${port}`;
+
+		// Check if already connected to the correct target
+		if (rotatorSocket && !rotatorSocket.destroyed && rotatorConnectedTo === target) {
+			sendParkCommands(resolve);
+			return;
+		}
+
+		// Need to establish connection
+		if (rotatorConnecting) {
+			// Already connecting, wait for it with timeout fallback
+			let resolved = false;
+			const checkInterval = setInterval(() => {
+				if (!rotatorConnecting && rotatorSocket && !rotatorSocket.destroyed && rotatorConnectedTo === target) {
+					cleanup();
+					sendParkCommands(resolve);
+				} else if (!rotatorConnecting && !rotatorSocket) {
+					cleanup();
+					resolve({ success: false, error: 'Connection failed' });
+				}
+			}, 100);
+
+			// Timeout fallback: prevent infinite polling
+			const timeoutId = setTimeout(() => {
+				if (!resolved) {
+					cleanup();
+					resolve({ success: false, error: 'Connection timeout' });
+				}
+			}, ROTATOR_PARK_WAIT_TIMEOUT_MS);
+
+			const cleanup = () => {
+				if (resolved) return;
+				resolved = true;
+				clearInterval(checkInterval);
+				clearTimeout(timeoutId);
+			};
+			return;
+		}
+
+		// Initiate connection using shared handler
+		rotatorCreateConnection(host, port, {
+			onConnect: (client) => sendParkCommands(resolve),
+			onError: (err) => resolve({ success: false, error: err.message }),
+			onClose: () => resolve({ success: false, error: 'Connection closed' })
+		});
+	});
+});
+
 ipcMain.on("restart_udp", async (event) => {
 	// Restart UDP server with current configuration
 	startUdpServer();
@@ -367,7 +511,13 @@ ipcMain.on("create_profile", async (event, name) => {
 		hamlib_host: '127.0.0.1',
 		hamlib_port: '4532',
 		hamlib_ena: false,
-		ignore_pwr: false
+		ignore_pwr: false,
+		rotator_host: '',
+		rotator_port: '4533',
+		rotator_threshold_az: 2,
+		rotator_threshold_el: 2,
+		rotator_park_az: 0,
+		rotator_park_el: 0,
 	};
 
 	data.profiles.push(newProfile);
@@ -473,6 +623,11 @@ function shutdownApplication() {
             console.log('Sending cleanup signal to renderer...');
             s_mainWindow.webContents.send('cleanup');
         }
+
+        // Clean up rotator poll and socket
+        if (rotatorPollTimer) { clearInterval(rotatorPollTimer); rotatorPollTimer = null; }
+        if (rotatorWsRateLimitTimer) { clearTimeout(rotatorWsRateLimitTimer); rotatorWsRateLimitTimer = null; }
+        closeRotatorSocket();
 
         // Clean up TCP connections
         cleanupConnections();
@@ -1471,6 +1626,10 @@ function startserver() {
 
 		// Start Secure WebSocket server
 		startSecureWebSocketServer();
+
+		// Start rotator position polling (every 2 s; no-ops when no rotator configured)
+		startRotatorPoll();
+
 	} catch(e) {
 		console.error('Error in startserver:', e);
 		tomsg('Some other Tool blocks Port 2333/54321/54322. Stop it, and restart this');
@@ -1510,6 +1669,8 @@ function startWebSocketServer() {
 				console.error('WebSocket unexpected response:', res.statusCode);
 				cleanupClient();
 			});
+
+			ws.on('message', handleWsIncomingMessage);
 
 			// Send current radio status on connection
 			try {
@@ -1606,6 +1767,8 @@ function startSecureWebSocketServer() {
 					cleanupClient();
 				});
 
+				ws.on('message', handleWsIncomingMessage);
+
 				// Send current radio status on connection
 				try {
 					ws.send(JSON.stringify({
@@ -1649,6 +1812,395 @@ function startSecureWebSocketServer() {
 			wssHttpsServer = null;
 		}
 		wssServer = null;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Rotator command queue.
+// One persistent TCP connection; commands serialised so responses don't mix.
+// P az el\n  →  RPRT 0\n          (position command, RPRT arrives fast)
+// p\n        →  az\nel\n           (poll position, NO RPRT on some backends)
+// S\n        →  RPRT 0\n          (stop/halt command)
+//
+// Direction changes: When new target differs from last commanded target,
+// S is sent first, then P after S's RPRT arrives (stop-before-move pattern).
+// ---------------------------------------------------------------------------
+
+function closeRotatorSocket() {
+	if (rotatorBusyTimer) { clearTimeout(rotatorBusyTimer); rotatorBusyTimer = null; }
+	if (rotatorSocket) { rotatorSocket.destroy(); rotatorSocket = null; }
+	rotatorConnecting  = false;
+	rotatorConnectedTo = null;
+	rotatorBusy        = false;
+	rotatorBuffer      = '';
+	rotatorCurrentCmd  = null;
+	rotatorHasSentP    = false;
+	rotatorLastCmdAz   = null;
+	rotatorLastCmdEl   = null;
+	rotatorCurrentAz   = null;
+	rotatorCurrentEl   = null;
+	rotatorStopping    = false;
+	rotatorStopAfterRPRT = null;
+	if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+		s_mainWindow.webContents.send('rotator_update', { connected: false });
+	}
+}
+
+// Set busy state and arm watchdog to prevent permanent stuck state.
+function rotatorSetBusy(cmd) {
+	rotatorBusy       = true;
+	rotatorCurrentCmd = cmd;
+	if (rotatorBusyTimer) clearTimeout(rotatorBusyTimer);
+	rotatorBusyTimer = setTimeout(() => {
+		rotatorBusy       = false;
+		rotatorCurrentCmd = null;
+		rotatorBuffer     = '';
+		rotatorBusyTimer  = null;
+		rotatorQueueProcess();
+	}, ROTATOR_BUSY_WATCHDOG_MS);
+}
+
+function rotatorClearBusy() {
+	if (rotatorBusyTimer) { clearTimeout(rotatorBusyTimer); rotatorBusyTimer = null; }
+	rotatorBusy       = false;
+	rotatorCurrentCmd = null;
+	rotatorBuffer     = '';
+}
+
+// Safe write to rotator socket with error handling
+// Closes socket and returns false on error, true on success
+function rotatorSafeWrite(command) {
+	if (!rotatorSocket || rotatorSocket.destroyed) {
+		return false;
+	}
+	try {
+		rotatorSocket.write(command, (err) => {
+			if (err) {
+				console.error('Rotator write error:', err.message);
+				closeRotatorSocket();
+			}
+		});
+		return true;
+	} catch (e) {
+		console.error('Rotator write exception:', e.message);
+		closeRotatorSocket();
+		return false;
+	}
+}
+
+function rotatorQueueProcess() {
+	if (rotatorBusy || !rotatorSocket || rotatorSocket.destroyed) {
+		return;
+	}
+
+	if (rotatorPendingSet) {
+		const { az, el } = rotatorPendingSet;
+
+		// Minimum movement threshold: only move if position differs by threshold
+		// Skip check if we don't have current position yet (first move always allowed)
+		if (rotatorCurrentAz !== null) {
+			// Get threshold from profile
+			const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
+			const thresholdAz = profile.rotator_threshold_az || 2;
+			const thresholdEl = profile.rotator_threshold_el || 2;
+
+			// Handle azimuth wraparound (359° → 1° = 2° difference, not 358°)
+			let azDiff = Math.abs(az - rotatorCurrentAz);
+			if (azDiff > 180) azDiff = 360 - azDiff;
+
+			// Elevation difference - always calculate, don't skip for el=0
+			// This allows proper threshold checking when park elevation is 0°
+			const elDiff = Math.abs(el - (rotatorCurrentEl || 0));
+			if (azDiff < thresholdAz && elDiff < thresholdEl) {
+				// Position too close, skip movement
+				rotatorPendingSet = null;
+				return;
+			}
+		}
+
+		// Direction reversal detection based on actual current position
+		// Only send S if we're currently moving in the opposite direction
+		let needStop = false;
+		if (rotatorCurrentAz !== null && rotatorLastCmdAz !== null && !rotatorStopping) {
+			// Calculate direction from current position to last commanded target
+			let lastDir = rotatorLastCmdAz - rotatorCurrentAz;
+			if (lastDir > 180) lastDir -= 360;
+			if (lastDir < -180) lastDir += 360;
+
+			// Calculate direction from current position to new target
+			let newDir = az - rotatorCurrentAz;
+			if (newDir > 180) newDir -= 360;
+			if (newDir < -180) newDir += 360;
+
+			// If directions have opposite signs, we need to stop first
+			needStop = (lastDir * newDir < 0);
+		}
+
+		if (needStop) {
+			// Send S first, then P after RPRT
+			rotatorStopping    = true;
+			rotatorStopAfterRPRT = { az, el };
+			// Don't clear rotatorPendingSet yet — it becomes the P we send after S completes
+			rotatorSetBusy('set');  // Use 'set' type for S (same RPRT format)
+			rotatorSafeWrite('S\n');
+			return;  // Will resume after S's RPRT arrives
+		}
+
+		// No stop needed — send P directly
+		rotatorPendingSet  = null;
+		rotatorHasSentP    = true;
+		rotatorLastPTime   = Date.now();
+		rotatorLastCmdAz   = az;
+		rotatorLastCmdEl   = el;
+		rotatorSetBusy('set');
+		rotatorSafeWrite(`P ${az} ${el}\n`);
+	} else if (rotatorPollPending) {
+		rotatorPollPending = false;
+		rotatorSetBusy('get');
+		rotatorSafeWrite('p\n');
+	}
+}
+
+function rotatorOnData(chunk) {
+	const raw = chunk.toString();
+	rotatorBuffer += raw;
+
+	if (rotatorCurrentCmd === 'set') {
+		// P response ends with RPRT N\n
+		if (/RPRT\s+-?\d+/.test(rotatorBuffer)) {
+			// If we just sent S to stop before a direction change, now send the P
+			if (rotatorStopping && rotatorStopAfterRPRT) {
+				const { az, el } = rotatorStopAfterRPRT;
+				rotatorStopping       = false;
+				rotatorStopAfterRPRT  = null;
+				rotatorPendingSet     = null;  // Clear the pending set since we're about to send it
+				rotatorHasSentP       = true;
+				rotatorLastPTime      = Date.now();
+				rotatorLastCmdAz      = az;
+				rotatorLastCmdEl      = el;
+				rotatorSetBusy('set');
+				rotatorSafeWrite(`P ${az} ${el}\n`);
+				rotatorBuffer = '';  // Clear buffer after consuming S's RPRT
+				return;
+			}
+
+			// Suppress any queued poll — let the rotator start moving uninterrupted.
+			// The next poll timer cycle (≤2 s) will pick it up naturally.
+			rotatorPollPending = false;
+			rotatorClearBusy();
+			rotatorQueueProcess();
+		}
+	} else if (rotatorCurrentCmd === 'get') {
+		// p response: az\nel\n (no RPRT on some backends) or az\nel\nRPRT 0\n (standard).
+		// Consider complete when RPRT is present OR when ≥2 numeric lines found.
+		const hasRPRT = /RPRT\s+-?\d+/.test(rotatorBuffer);
+		const nums = rotatorBuffer.split('\n')
+			.map(l => l.trim())
+			.filter(l => l !== '' && !/^RPRT/.test(l))
+			.map(l => parseFloat(l))
+			.filter(n => !isNaN(n));
+		if (hasRPRT || nums.length >= 2) {
+			const az = nums[0];
+			const el = nums.length >= 2 ? nums[1] : 0;
+			if (nums.length >= 2) {
+				rotatorCurrentAz = az;
+				rotatorCurrentEl = el;
+			}
+			rotatorClearBusy();
+			if (nums.length >= 2 && s_mainWindow && !s_mainWindow.isDestroyed()) {
+				s_mainWindow.webContents.send('rotator_position', { az, el });
+			}
+			rotatorQueueProcess();
+		}
+	} else {
+		// No command in flight — discard unexpected data (e.g. RPRT from a direct S\n write)
+		rotatorBuffer = '';
+	}
+}
+
+// Shared rotator socket connection handler
+// Creates and configures a rotctld TCP connection with standard event handlers
+function rotatorCreateConnection(host, port, callbacks = {}) {
+	const target = `${host}:${port}`;
+	const { onConnect, onError, onClose } = callbacks;
+
+	if (rotatorConnecting) return null;
+	rotatorConnecting = true;
+
+	const client = net.createConnection({ host, port }, () => {
+		rotatorConnecting  = false;
+		rotatorSocket      = client;
+		rotatorConnectedTo = target;
+		client.setTimeout(0);
+		if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+			s_mainWindow.webContents.send('rotator_update', { connected: true });
+		}
+		if (onConnect) onConnect(client);
+	});
+
+	client.on('data', rotatorOnData);
+	client.setTimeout(ROTATOR_CONNECTION_TIMEOUT_MS, () => { if (rotatorConnecting) client.destroy(); });
+
+	client.on('error', (err) => {
+		closeRotatorSocket();
+		if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+			s_mainWindow.webContents.send('rotator_update', { connected: false, error: err.message });
+		}
+		if (onError) onError(err);
+	});
+
+	client.on('close', () => {
+		if (rotatorBusyTimer) { clearTimeout(rotatorBusyTimer); rotatorBusyTimer = null; }
+		if (rotatorSocket === client) { rotatorSocket = null; rotatorConnectedTo = null; }
+		rotatorConnecting  = false;
+		rotatorBusy        = false;
+		rotatorBuffer      = '';
+		rotatorCurrentCmd  = null;
+		rotatorHasSentP    = false;
+		rotatorLastCmdAz   = null;
+		rotatorLastCmdEl   = null;
+		rotatorCurrentAz   = null;
+		rotatorCurrentEl   = null;
+		rotatorStopping    = false;
+		rotatorStopAfterRPRT = null;
+		if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+			s_mainWindow.webContents.send('rotator_update', { connected: false });
+		}
+		if (onClose) onClose();
+	});
+
+	return client;
+}
+
+function rotatorEnsureConnected() {
+	const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
+	const host = (profile.rotator_host || '').trim();
+	const port = parseInt(profile.rotator_port, 10);
+	if (!host || !port) return;
+
+	const target = `${host}:${port}`;
+	if (rotatorSocket && rotatorConnectedTo !== target) closeRotatorSocket();
+
+	if (rotatorSocket && !rotatorSocket.destroyed) {
+		rotatorQueueProcess();
+		return;
+	}
+
+	rotatorCreateConnection(host, port, {
+		onConnect: () => rotatorQueueProcess()
+	});
+}
+
+function sendToRotator(az, el) {
+	rotatorPendingSet = { az, el }; // overwrite — only latest target matters
+	rotatorPollPending = false;     // cancel any queued poll — movement takes priority
+
+	// Pre-empt an in-flight p poll: write P immediately rather than waiting for the
+	// p response. The pending p response (az/el/RPRT) arriving afterwards will be
+	// handled by the 'set' branch (RPRT satisfies the detector; numeric lines drain).
+	if (rotatorSocket && !rotatorSocket.destroyed && rotatorCurrentCmd === 'get') {
+		const { az: pAz, el: pEl } = rotatorPendingSet;
+		rotatorPendingSet  = null;
+		rotatorHasSentP    = true;
+		rotatorLastPTime   = Date.now();
+		rotatorLastCmdAz   = pAz;
+		rotatorLastCmdEl   = pEl;
+		rotatorClearBusy(); // abandon 'get' state (buffer cleared)
+		rotatorSetBusy('set');
+		rotatorSafeWrite(`P ${pAz} ${pEl}\n`);
+		return;
+	}
+
+	rotatorEnsureConnected();
+}
+
+function startRotatorPoll() {
+	if (rotatorPollTimer) return;
+	rotatorPollTimer = setInterval(() => {
+		if (rotatorFollowMode === 'off') return;
+		if (!rotatorHasSentP) return;
+		const msSinceP = Date.now() - rotatorLastPTime;
+		if (msSinceP < ROTATOR_POLL_SUPPRESSION_MS) return;
+		const profile = defaultcfg.profiles[defaultcfg.profile ?? 0];
+		if (!(profile.rotator_host || '').trim()) return;
+		if (!rotatorPollPending) {
+			rotatorPollPending = true;
+			rotatorEnsureConnected();
+		}
+	}, ROTATOR_POLL_INTERVAL_MS);
+}
+
+// Send rotator command with rate limiting to prevent overwhelming rotctld
+function sendRateLimitedRotatorCommand(az, el, type) {
+	const now = Date.now();
+	const timeSinceLastCommand = now - rotatorLastWsCommandTime;
+
+	// Store the latest command (overwrites any previous pending command)
+	rotatorPendingWsCommand = { az, el, type };
+
+	// If enough time has passed, send immediately
+	if (timeSinceLastCommand >= ROTATOR_WS_RATE_LIMIT_MS) {
+		// Clear any existing rate limit timer
+		if (rotatorWsRateLimitTimer) {
+			clearTimeout(rotatorWsRateLimitTimer);
+			rotatorWsRateLimitTimer = null;
+		}
+
+		// Send the command
+		rotatorLastWsCommandTime = now;
+		const cmd = rotatorPendingWsCommand;
+		rotatorPendingWsCommand = null;
+		sendToRotator(cmd.az, cmd.el);
+	} else if (!rotatorWsRateLimitTimer) {
+		// Not enough time has passed and no timer is set, create one
+		const delay = ROTATOR_WS_RATE_LIMIT_MS - timeSinceLastCommand;
+		rotatorWsRateLimitTimer = setTimeout(() => {
+			if (rotatorPendingWsCommand) {
+				rotatorLastWsCommandTime = Date.now();
+				const cmd = rotatorPendingWsCommand;
+				rotatorPendingWsCommand = null;
+				sendToRotator(cmd.az, cmd.el);
+			}
+			rotatorWsRateLimitTimer = null;
+		}, delay);
+	}
+	// If timer already exists, the new command is already stored in rotatorPendingWsCommand
+	// and will be sent when the timer fires
+}
+
+function handleWsIncomingMessage(data) {
+	try {
+		const msg = JSON.parse(data.toString());
+
+		if (msg.type === 'lookup_result' && msg.payload && msg.payload.azimuth !== undefined) {
+			const az = parseFloat(msg.payload.azimuth);
+			// Validate azimuth
+			if (typeof az !== 'number' || isNaN(az) || az < 0 || az > 360) {
+				return; // Invalid azimuth, ignore message
+			}
+
+			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+				s_mainWindow.webContents.send('rotator_bearing', { type: 'hf', az });
+			}
+			if (rotatorFollowMode === 'hf') {
+				sendRateLimitedRotatorCommand(az, 0, 'hf');
+			}
+		} else if (msg.type === 'satellite_position' && msg.data) {
+			const az = parseFloat(msg.data.azimuth);
+			const el = parseFloat(msg.data.elevation);
+			// Validate azimuth and elevation
+			if (typeof az !== 'number' || isNaN(az) || az < 0 || az > 360) return;
+			if (typeof el !== 'number' || isNaN(el) || el < 0 || el > 90) return;
+
+			if (s_mainWindow && !s_mainWindow.isDestroyed()) {
+				s_mainWindow.webContents.send('rotator_bearing', { type: 'sat', az, el });
+			}
+			if (rotatorFollowMode === 'sat') {
+				sendRateLimitedRotatorCommand(az, el, 'sat');
+			}
+		}
+	} catch (e) {
+		// Not JSON or unknown message type, ignore silently
 	}
 }
 

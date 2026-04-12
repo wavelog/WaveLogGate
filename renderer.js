@@ -27,6 +27,12 @@ const input_url=select("#wavelog_url");
 let oldCat={ vfo: 0, mode: "SSB" };
 let lastCat=0;
 
+// Window size constants
+const WINDOW_WIDTH = 430;
+const TAB_HEIGHT_CONFIG = 550;
+const TAB_HEIGHT_STATUS = 320;
+const MODAL_HEIGHT = 600;
+
 $(document).ready(function() {
 
 	load_config();
@@ -70,6 +76,7 @@ $(document).ready(function() {
 		}
 
 		cfg=await ipcRenderer.sendSync("set_config", cfg);
+		updateRotatorPanel();
 	});
 
 	bt_quit.addEventListener('click', () => {
@@ -113,16 +120,16 @@ $(document).ready(function() {
 
 	$("#config-tab").on("click",function() {
 		const obj={};
-		obj.width=430;
-		obj.height=550;
+		obj.width=WINDOW_WIDTH;
+		obj.height=TAB_HEIGHT_CONFIG;
 		obj.ani=false;
 		resizeme(obj);
 	});
 
 	$("#status-tab").on("click",function() {
 		const obj={};
-		obj.width=430;
-		obj.height=250;
+		obj.width=WINDOW_WIDTH;
+		obj.height=getStatusTabHeight();
 		obj.ani=false;
 		resizeme(obj);
 	});
@@ -165,10 +172,75 @@ $(document).ready(function() {
 		deleteProfile(index);
 	});
 
+	// Rotator follow mode
+	$('input[name="rotator_follow"]').on('change', function() {
+		const mode = $(this).val();
+		ipcRenderer.sendSync('rotator_set_follow', mode);
+
+		// Show/hide position displays based on mode
+		if (mode === 'hf') {
+			$('#rotator_hf_az').show();
+			$('#rotator_sat_pos').hide();
+		} else if (mode === 'sat') {
+			$('#rotator_hf_az').hide();
+			$('#rotator_sat_pos').show();
+		} else {
+			$('#rotator_hf_az').hide();
+			$('#rotator_sat_pos').hide();
+		}
+	});
+
+	// Park button handler
+	$('#rot_park').on('click', async function() {
+		const profile = cfg.profiles[active_cfg];
+		if (!(profile.rotator_host || '').trim()) {
+			return; // Not configured
+		}
+
+		// Disable button while parking
+		$(this).prop('disabled', true).text('Parking...');
+
+		try {
+			// First, switch to Off mode to stop WebSocket message processing
+			ipcRenderer.sendSync('rotator_set_follow', 'off');
+			$('input[name="rotator_follow"][value="off"]').prop('checked', true);
+
+			// Then connect and send to park
+			await ipcRenderer.invoke('rotator_park', profile);
+		} finally {
+			// Re-enable button
+			$(this).prop('disabled', false).text('Park');
+		}
+	});
+
 	// Advanced settings modal event listeners
 	$('#advanced').click(openAdvancedModal);
 	$('#advancedSave').click(saveAdvancedSettings);
 	$('#advancedCancel').click(() => $('#advancedModal').modal('hide'));
+
+	// Rotator settings modal event listeners
+	$('#rotatorSettings').click(openRotatorModal);
+	$('#rotatorSave').click(saveRotatorSettings);
+	$('#rotatorCancel').click(closeRotatorModal);
+
+	// Handle rotator modal close via X button, backdrop click, or API call
+	$('#rotatorModal').on('hidden.bs.modal', function () {
+		if (originalWindowSize) {
+			// Restore appropriate window size based on current tab
+			const isConfigTab = $('#config').hasClass('active');
+			const isStatusTab = $('#status').hasClass('active');
+			let targetHeight = originalWindowSize.height;
+
+			if (isStatusTab) {
+				targetHeight = getStatusTabHeight();
+			} else if (isConfigTab) {
+				targetHeight = TAB_HEIGHT_CONFIG;
+			}
+
+			resizeme({ width: originalWindowSize.width, height: targetHeight, ani: false });
+			originalWindowSize = null;
+		}
+	});
 });
 
 async function load_config() {
@@ -194,6 +266,11 @@ async function load_config() {
 	// Update radio fields based on selection
 	updateRadioFields();
 
+	// Reset follow toggle to Off when loading a profile
+	$('input[name="rotator_follow"][value="off"]').prop('checked', true);
+	ipcRenderer.sendSync('rotator_set_follow', 'off');
+	updateRotatorPanel();
+
 	if (cfg.profiles[active_cfg].wavelog_key != "" && cfg.profiles[active_cfg].wavelog_url != "") {
 		getStations();
 	}
@@ -205,6 +282,17 @@ async function load_config() {
 function resizeme(size) {
 	x=(ipcRenderer.sendSync("resize", size))
 	return x;
+}
+
+function getStatusTabHeight() {
+	return TAB_HEIGHT_STATUS;
+}
+
+function updateRotatorPanel() {
+	updateRotatorPanelVisibility();
+	if ($('#status').hasClass('active')) {
+		resizeme({ width: WINDOW_WIDTH, height: getStatusTabHeight(), ani: false });
+	}
 }
 
 function select(selector) {
@@ -250,6 +338,30 @@ function updateRadioFields() {
 			break;
 	}
 }
+
+ipcRenderer.on('rotator_bearing', (event, data) => {
+	if (data.type === 'hf') {
+		$('#rotator_hf_az').text(`Az: ${data.az}°`);
+	} else if (data.type === 'sat') {
+		$('#rotator_sat_pos').text(`Az: ${data.az}°  El: ${data.el}°`);
+	}
+});
+
+ipcRenderer.on('rotator_position', (event, data) => {
+	const elStr = (data.el !== undefined && data.el !== 0) ? `  El: ${parseFloat(data.el).toFixed(1)}°` : '';
+	$('#rotator_current').text(`Az: ${parseFloat(data.az).toFixed(1)}°${elStr}`);
+});
+
+ipcRenderer.on('rotator_update', (event, data) => {
+	if (data.connected !== undefined) {
+		const statusEl = $('#rotator_status');
+		if (data.connected) {
+			statusEl.text('✓ connected').css('color', '#28a745');
+		} else {
+			statusEl.text('✗ offline').css('color', '#dc3545');
+		}
+	}
+});
 
 window.TX_API.onUpdateMsg((value) => {
 	$("#msg").html(value);
@@ -753,6 +865,68 @@ async function saveAdvancedSettings() {
 	updateUdpStatus();
 
 	$('#advancedModal').modal('hide');
+}
+
+let originalWindowSize = null;
+
+function openRotatorModal() {
+	const profile = cfg.profiles[active_cfg];
+	$("#modal_rotator_host").val(profile.rotator_host || '');
+	$("#modal_rotator_port").val(profile.rotator_port || '4533');
+	$("#rotator_threshold_az").val(profile.rotator_threshold_az || 2);
+	$("#rotator_threshold_el").val(profile.rotator_threshold_el || 2);
+	$("#rotator_park_az").val(profile.rotator_park_az !== undefined ? profile.rotator_park_az : 0);
+	$("#rotator_park_el").val(profile.rotator_park_el !== undefined ? profile.rotator_park_el : 0);
+
+	originalWindowSize = ipcRenderer.sendSync("get_window_size");
+	resizeme({ width: originalWindowSize.width, height: MODAL_HEIGHT, ani: false });
+
+	$('#rotatorModal').modal('show');
+}
+
+async function saveRotatorSettings() {
+	const profile = cfg.profiles[active_cfg];
+	profile.rotator_host = $("#modal_rotator_host").val().trim();
+	profile.rotator_port = $("#modal_rotator_port").val() || '4533';
+	profile.rotator_threshold_az = parseFloat($("#rotator_threshold_az").val()) || 2;
+	profile.rotator_threshold_el = parseFloat($("#rotator_threshold_el").val()) || 2;
+	profile.rotator_park_az = parseFloat($("#rotator_park_az").val()) || 0;
+	profile.rotator_park_el = parseFloat($("#rotator_park_el").val()) || 0;
+
+	cfg = await ipcRenderer.sendSync("set_config", cfg);
+
+	updateRotatorPanelVisibility();
+
+	closeRotatorModal();
+}
+
+function closeRotatorModal() {
+	$('#rotatorModal').modal('hide');
+}
+
+function updateRotatorPanelVisibility() {
+	const profile = cfg.profiles[active_cfg];
+	const hasRotator = (profile.rotator_host || '').trim() !== '';
+	if (hasRotator) {
+		const host = profile.rotator_host;
+		const port = profile.rotator_port || '4533';
+		$('#rotator_status').text(`${host}:${port}`).css('color', '#888');
+		$('#rotator_current').show();
+		$('#rotator_hint').hide();
+		$('input[name="rotator_follow"]').parent().show();
+		$('#rot_park').show();
+		$('#rotator_hf_az').show();
+		$('#rotator_sat_pos').show();
+	} else {
+		$('#rotator_status').text('Not configured').css('color', '#666');
+		$('#rotator_current').hide();
+		$('#rotator_hint').show();
+		$('input[name="rotator_follow"]').parent().hide();
+		$('#rot_park').hide();
+		$('#rotator_hf_az').hide();
+		$('#rotator_sat_pos').hide();
+	}
+	$('#rotator_panel').show();
 }
 
 function updateUdpStatus() {

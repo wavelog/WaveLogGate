@@ -198,6 +198,40 @@
 							<div id="log"></div>
 						</div>
 					</div>
+					<div id="rotator_panel" style="display: none; margin: 4px;">
+						<div style="border: 1px solid #727272; border-radius: 4px; padding: 6px 8px;">
+							<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+								<strong style="font-size: 0.85em;">ROTATOR</strong>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<small id="rotator_status" style="color: #888;"></small>
+									<button type="button" class="btn btn-sm btn-link p-0" id="rotatorSettings" title="Rotator Settings" style="color: #888;">
+										📡
+									</button>
+								</div>
+							</div>
+							<div id="rotator_current" style="font-size: 0.95em; min-height: 1.2em; margin-bottom: 4px; color: #c6c6c6;"></div>
+							<div id="rotator_hint" style="font-size: 0.85em; color: #888; margin-bottom: 4px; display: none;">
+								Click ⚙️ to configure rotator
+							</div>
+						<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.85em;">
+								<div class="custom-control custom-radio custom-control-inline" style="margin-right: 0;">
+									<input type="radio" id="rot_off" name="rotator_follow" class="custom-control-input" value="off" checked>
+									<label class="custom-control-label" for="rot_off">Off</label>
+								</div>
+								<div class="custom-control custom-radio custom-control-inline" style="margin-right: 0;">
+									<input type="radio" id="rot_hf" name="rotator_follow" class="custom-control-input" value="hf">
+									<label class="custom-control-label" for="rot_hf">HF</label>
+								</div>
+								<span id="rotator_hf_az" style="color: #aaa; min-width: 55px;"></span>
+								<div class="custom-control custom-radio custom-control-inline" style="margin-right: 0;">
+									<input type="radio" id="rot_sat" name="rotator_follow" class="custom-control-input" value="sat">
+									<label class="custom-control-label" for="rot_sat">SAT</label>
+								</div>
+								<span id="rotator_sat_pos" style="color: #aaa;"></span>
+								<button type="button" class="btn btn-sm btn-secondary" id="rot_park" style="font-size: 0.85em; padding: 2px 8px; margin-left: 4px;">Park</button>
+							</div>
+						</div>
+					</div>
 				</div>
 				<div class="tab-pane" id="config" role="tabpanel" aria-labelledby="config-tab">
 					<div class="row">
@@ -332,6 +366,60 @@
 				<div class="modal-footer">
 					<button type="button" class="btn btn-secondary" data-dismiss="modal" id="advancedCancel">Cancel</button>
 					<button type="button" class="btn btn-primary" id="advancedSave">Save</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Rotator Settings Modal -->
+	<div class="modal fade" id="rotatorModal" tabindex="-1">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Rotator Settings</h5>
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+				</div>
+				<div class="modal-body">
+					<!-- Connection Settings -->
+					<h6>Connection (rotctld)</h6>
+					<div class="form-group">
+						<label for="modal_rotator_host">Rotator Host</label>
+						<input type="text" class="form-control" id="modal_rotator_host" placeholder="127.0.0.1">
+						<small class="form-text text-muted">Leave empty to disable rotator</small>
+					</div>
+					<div class="form-group">
+						<label for="modal_rotator_port">Rotator Port</label>
+						<input type="number" class="form-control" id="modal_rotator_port" min="1" max="65535" value="4533">
+					</div>
+
+					<!-- Threshold Settings -->
+					<h6 class="mt-3">Movement Threshold</h6>
+					<div class="form-group">
+						<label for="rotator_threshold_az">Azimuth Threshold (degrees)</label>
+						<input type="number" class="form-control" id="rotator_threshold_az" min="0" max="180" value="2">
+						<small class="form-text text-muted">Minimum movement before triggering rotator</small>
+					</div>
+					<div class="form-group">
+						<label for="rotator_threshold_el">Elevation Threshold (degrees)</label>
+						<input type="number" class="form-control" id="rotator_threshold_el" min="0" max="90" value="2">
+					</div>
+
+					<!-- Park Position Settings -->
+					<h6 class="mt-3">Park Position</h6>
+					<div class="form-group">
+						<label for="rotator_park_az">Park Azimuth (degrees)</label>
+						<input type="number" class="form-control" id="rotator_park_az" min="0" max="360" value="0">
+					</div>
+					<div class="form-group">
+						<label for="rotator_park_el">Park Elevation (degrees)</label>
+						<input type="number" class="form-control" id="rotator_park_el" min="0" max="90" value="0">
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-dismiss="modal" id="rotatorCancel">Cancel</button>
+					<button type="button" class="btn btn-primary" id="rotatorSave">Save</button>
 				</div>
 			</div>
 		</div>
