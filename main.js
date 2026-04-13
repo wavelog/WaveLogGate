@@ -1789,7 +1789,7 @@ async function settrx(qrg, mode = '') {
 		const client = net.createConnection({ host: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_host, port: defaultcfg.profiles[defaultcfg.profile ?? 0].hamlib_port }, () => {
 			client.write("F " + to.qrg + "\n");
 			if (defaultcfg.profiles[defaultcfg.profile ?? 0].wavelog_pmode) {
-				client.write("M " + to.mode + " -1\n");
+				client.write("M " + to.mode + " 0\n");
 			}
 			client.end();
 		});
