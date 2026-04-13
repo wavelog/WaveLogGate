@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "WavelogGate",
+  "outputfilename": "WavelogGate",
+  "frontend:install": "bun install",
+  "frontend:build": "bun run build",
+  "frontend:dev:watcher": "bun run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Joerg",
+    "email": "joerg@dj7nt.de"
+  }
+}
