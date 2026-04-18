@@ -292,6 +292,9 @@ xattr -d com.apple.quarantine /Applications/WavelogGate.app
 | Wails CLI | v2.x | `go install github.com/wailsapp/wails/v2/cmd/wails@latest` |
 | Bun | any | https://bun.sh |
 
+#### Warning:
+- wails builds - per default - against libwebkit-4.0. if webkit-4.0 isn't available on your system, because it already uses libwebkit-4.1, you need to add a swtich to dev or build (see below). The switch is called `-tags webkit2_41`
+
 ### Development (live reload)
 
 ```bash
