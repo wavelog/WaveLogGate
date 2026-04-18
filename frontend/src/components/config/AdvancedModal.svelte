@@ -7,18 +7,26 @@
   let advUdpEnabled = true;
   let advUdpPort = 2333;
   let advMinimapEnabled = false;
+  let advEmitEnabled = false;
+  let advEmitPort = 2334;
+  let advEmitHost = "127.0.0.1";
   let advStatus = "";
+
+  $: portClash = advUdpEnabled && advEmitEnabled && advUdpPort === advEmitPort;
 
   onMount(async () => {
     const status = await GetUDPStatus();
     advUdpEnabled = status.enabled;
     advUdpPort = status.port;
     advMinimapEnabled = status.minimapEnabled;
+    advEmitEnabled = status.emitEnabled;
+    advEmitPort = status.emitPort;
+    advEmitHost = status.emitHost;
   });
 
   async function save() {
     try {
-      await SaveAdvanced(advUdpEnabled, advUdpPort, advMinimapEnabled);
+      await SaveAdvanced(advUdpEnabled, advUdpPort, advMinimapEnabled, advEmitEnabled, advEmitPort, advEmitHost);
       advStatus = "Saved ✓";
       setTimeout(() => {
         advStatus = "";
@@ -59,6 +67,41 @@
         disabled={!advUdpEnabled}
       />
     </div>
+
+    <div class="flex items-center gap-1.5 mb-1 mt-2 border-t border-stroke-section pt-2">
+      <label>
+        <input type="checkbox" bind:checked={advEmitEnabled} />
+        UDP QSO Emit enabled
+      </label>
+    </div>
+
+    <div class="flex items-center gap-1.5 mb-1">
+      <label class="w-field-xs flex-shrink-0 text-fg-label text-2xs justify-end" for="adv-emit-host">Emit Host</label>
+      <input
+        id="adv-emit-host"
+        type="text"
+        class="flex-1"
+        bind:value={advEmitHost}
+        disabled={!advEmitEnabled}
+      />
+    </div>
+
+    <div class="flex items-center gap-1.5 mb-1">
+      <label class="w-field-xs flex-shrink-0 text-fg-label text-2xs justify-end" for="adv-emit-port">Emit Port</label>
+      <input
+        id="adv-emit-port"
+        type="number"
+        class="flex-none w-field-xs"
+        bind:value={advEmitPort}
+        min="1024"
+        max="65535"
+        disabled={!advEmitEnabled}
+      />
+    </div>
+
+    {#if portClash}
+      <div class="alert alert-danger mt-1">Emit port must differ from the listener port ({advUdpPort})</div>
+    {/if}
 
     <div class="flex items-center gap-1.5 mb-1 mt-2 border-t border-stroke-section pt-2">
       <label>

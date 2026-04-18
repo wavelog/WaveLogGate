@@ -108,6 +108,9 @@ export namespace config {
 	    udp_enabled: boolean;
 	    udp_port: number;
 	    minimap_enabled: boolean;
+	    udp_emit_enabled: boolean;
+	    udp_emit_port: number;
+	    udp_emit_host: string;
 	    profiles: Profile[];
 	
 	    static createFrom(source: any = {}) {
@@ -122,6 +125,9 @@ export namespace config {
 	        this.udp_enabled = source["udp_enabled"];
 	        this.udp_port = source["udp_port"];
 	        this.minimap_enabled = source["minimap_enabled"];
+	        this.udp_emit_enabled = source["udp_emit_enabled"];
+	        this.udp_emit_port = source["udp_emit_port"];
+	        this.udp_emit_host = source["udp_emit_host"];
 	        this.profiles = this.convertValues(source["profiles"], Profile);
 	    }
 	
@@ -242,6 +248,9 @@ export namespace main {
 	    port: number;
 	    running: boolean;
 	    minimapEnabled: boolean;
+	    emitEnabled: boolean;
+	    emitPort: number;
+	    emitHost: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UDPStatus(source);
@@ -253,6 +262,9 @@ export namespace main {
 	        this.port = source["port"];
 	        this.running = source["running"];
 	        this.minimapEnabled = source["minimapEnabled"];
+	        this.emitEnabled = source["emitEnabled"];
+	        this.emitPort = source["emitPort"];
+	        this.emitHost = source["emitHost"];
 	    }
 	}
 
