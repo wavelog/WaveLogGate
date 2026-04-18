@@ -40,7 +40,14 @@ jobs:
             artifact: WavelogGate-windows-x86
           - os: ubuntu-22.04
             platform: linux/amd64
-            artifact: WavelogGate-linux-amd64
+            artifact: WavelogGate-linux-amd64-webkit4.0
+            webkit_pkg: libwebkit2gtk-4.0-dev
+            webkit_tags: ''
+          - os: ubuntu-24.04
+            platform: linux/amd64
+            artifact: WavelogGate-linux-amd64-webkit4.1
+            webkit_pkg: libwebkit2gtk-4.1-dev
+            webkit_tags: '-tags webkit2_41'
 
     runs-on: ${{ matrix.os }}
 
@@ -60,7 +67,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt-get install -y libgtk-3-dev ${{ matrix.webkit_pkg }}
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -73,7 +80,7 @@ jobs:
           else
             VERSION=$(git describe --tags --always 2>/dev/null || echo "vdev")
           fi
-          wails build -clean -platform ${{ matrix.platform }} -ldflags "-X main.appVersion=${VERSION}"
+          wails build -clean -platform ${{ matrix.platform }} ${{ matrix.webkit_tags }} -ldflags "-X main.appVersion=${VERSION}"
 
       - name: Sign (macOS)
         if: runner.os == 'macOS'
@@ -142,7 +149,7 @@ jobs:
               VERSION="0.0.0"
             fi
           fi
-          PKG="wavelog-gate_${VERSION}_amd64"
+          PKG="wavelog-gate_${VERSION}_${{ matrix.artifact == 'WavelogGate-linux-amd64-webkit4.1' && 'webkit4.1' || 'webkit4.0' }}_amd64"
           mkdir -p "${PKG}/DEBIAN"
           mkdir -p "${PKG}/usr/local/bin"
           mkdir -p "${PKG}/usr/share/applications"
@@ -212,4 +219,5 @@ jobs:
             artifacts/WavelogGate-darwin-amd64/*.dmg
             artifacts/WavelogGate-windows-amd64/WavelogGate-windows-amd64.exe
             artifacts/WavelogGate-windows-x86/WavelogGate-windows-x86.exe
-            artifacts/WavelogGate-linux-amd64/*.deb
+            artifacts/WavelogGate-linux-amd64-webkit4.0/*.deb
+            artifacts/WavelogGate-linux-amd64-webkit4.1/*.deb
