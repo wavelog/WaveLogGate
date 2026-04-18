@@ -265,6 +265,26 @@ A `{"type":"welcome","message":"..."}` message is sent on connect, followed imme
 
 ---
 
+### UDP Emit (broadcast QSOs)
+
+WavelogGate can emit successfully logged QSO as a Wavelog-native ADIF datagram to a configurable UDP destination. This is useful for forwarding QSOs to a second application (e.g. a local logger, a contest/awawrd-collector or display tool) without having that application talk directly to Wavelog.
+
+#### Important: 
+This **only** works for QSOs which are logged on the Wavelog-Site. e.g.: You log a QSO on your instance (while WavelogGate runs and is connected via Websocket) --> QSO is **locally** emitted to the configured Host/Port if enabled.
+Emitting QSOs which are alreadt generated locally (e.g.: via WSJT-X) doesn't make any sense. They're already locally
+
+Enable and configure via **⚙ Advanced**:
+
+| Field | Description |
+|-------|-------------|
+| UDP Emit | Enable / disable broadcast |
+| Host | Destination host (default: `127.0.0.1`) |
+| Port | Destination UDP port (default: `2334`) |
+
+Each datagram contains the ADIF string for the QSO which was logged within Wavelog. The feature is disabled by default and persisted per global config (not per profile).
+
+---
+
 ### Troubleshooting
 
 **Port conflict** — another application is using port 2333, 54321, or 54322. Find it with `lsof -i :<port>` (macOS/Linux) or `netstat -ano | findstr :<port>` (Windows) and stop it.
