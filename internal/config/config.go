@@ -50,6 +50,9 @@ type Config struct {
 	UDPEnabled     bool      `json:"udp_enabled"`
 	UDPPort        int       `json:"udp_port"`
 	MinimapEnabled bool      `json:"minimap_enabled"`
+	UDPEmitEnabled bool      `json:"udp_emit_enabled"`
+	UDPEmitPort    int       `json:"udp_emit_port"`
+	UDPEmitHost    string    `json:"udp_emit_host"`
 	Profiles       []Profile `json:"profiles"`
 }
 
@@ -78,12 +81,15 @@ func defaultProfile() Profile {
 
 func Default() Config {
 	return Config{
-		Version:        5,
+		Version:        6,
 		Profile:        0,
 		ProfileNames:   []string{"Profile 1", "Profile 2"},
 		UDPEnabled:     true,
 		UDPPort:        2333,
 		MinimapEnabled: false,
+		UDPEmitEnabled: false,
+		UDPEmitPort:    2334,
+		UDPEmitHost:    "127.0.0.1",
 		Profiles:       []Profile{defaultProfile(), defaultProfile()},
 	}
 }
@@ -161,6 +167,15 @@ func migrate(cfg Config) Config {
 	if cfg.Version < 5 {
 		cfg.Version = 5
 		// New hamlib managed fields default to zero values (disabled).
+	}
+	if cfg.Version < 6 {
+		cfg.Version = 6
+		if cfg.UDPEmitPort == 0 {
+			cfg.UDPEmitPort = 2334
+		}
+		if cfg.UDPEmitHost == "" {
+			cfg.UDPEmitHost = "127.0.0.1"
+		}
 	}
 	return cfg
 }

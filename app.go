@@ -157,6 +157,22 @@ func (a *App) startup(ctx context.Context) {
 			}
 			debug.Log("[WS] satellite_position: az=%.1f el=%.1f → HandleWSCommand", az, el)
 			a.rotator.HandleWSCommand(az, el, "sat")
+		case "qso_logged":
+			if !a.cfg.UDPEmitEnabled {
+				return
+			}
+			var p struct {
+				Data struct {
+					ADIF string `json:"adif"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(data, &p); err != nil || p.Data.ADIF == "" {
+				debug.Log("[WS] qso_logged: bad payload: %v", err)
+				return
+			}
+			if err := udp.Emit(a.cfg.UDPEmitHost, a.cfg.UDPEmitPort, p.Data.ADIF); err != nil {
+				debug.Log("[WS] qso_logged: emit error: %v", err)
+			}
 		default:
 			debug.Log("[WS] unhandled type=%s", msgType)
 		}
@@ -409,10 +425,13 @@ func (a *App) SwitchProfile(index int) error {
 
 // UDPStatus holds current UDP server status.
 type UDPStatus struct {
-	Enabled        bool `json:"enabled"`
-	Port           int  `json:"port"`
-	Running        bool `json:"running"`
-	MinimapEnabled bool `json:"minimapEnabled"`
+	Enabled        bool   `json:"enabled"`
+	Port           int    `json:"port"`
+	Running        bool   `json:"running"`
+	MinimapEnabled bool   `json:"minimapEnabled"`
+	EmitEnabled    bool   `json:"emitEnabled"`
+	EmitPort       int    `json:"emitPort"`
+	EmitHost       string `json:"emitHost"`
 }
 
 // GetUDPStatus returns the current UDP server status.
@@ -422,6 +441,9 @@ func (a *App) GetUDPStatus() UDPStatus {
 		Port:           a.cfg.UDPPort,
 		Running:        a.udpSrv != nil,
 		MinimapEnabled: a.cfg.MinimapEnabled,
+		EmitEnabled:    a.cfg.UDPEmitEnabled,
+		EmitPort:       a.cfg.UDPEmitPort,
+		EmitHost:       a.cfg.UDPEmitHost,
 	}
 }
 
@@ -480,10 +502,16 @@ func (a *App) RotatorPark() {
 }
 
 // SaveAdvanced saves global (non-profile) settings.
-func (a *App) SaveAdvanced(udpEnabled bool, udpPort int, minimapEnabled bool) error {
+func (a *App) SaveAdvanced(udpEnabled bool, udpPort int, minimapEnabled bool, emitEnabled bool, emitPort int, emitHost string) error {
+	if udpEnabled && emitEnabled && udpPort == emitPort {
+		return fmt.Errorf("emit port must differ from the listener port (%d)", udpPort)
+	}
 	a.cfg.UDPEnabled = udpEnabled
 	a.cfg.UDPPort = udpPort
 	a.cfg.MinimapEnabled = minimapEnabled
+	a.cfg.UDPEmitEnabled = emitEnabled
+	a.cfg.UDPEmitPort = emitPort
+	a.cfg.UDPEmitHost = emitHost
 	_ = config.Save(a.cfg)
 
 	wailsruntime.EventsEmit(a.ctx, "advanced:changed", map[string]interface{}{
