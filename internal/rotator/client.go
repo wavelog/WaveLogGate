@@ -320,12 +320,13 @@ func (c *Client) ensureConnected() {
 	c.mu.Lock()
 	host := c.cfg.RotatorHost
 	port := c.cfg.RotatorPort
+	enabled := c.cfg.RotatorEnabled
 	target := host + ":" + port
 	conn := c.conn
 	connTarget := c.connTarget
 	c.mu.Unlock()
 
-	if host == "" || !c.cfg.RotatorEnabled {
+	if host == "" || !enabled {
 		// No host configured or rotator disabled — disconnect if currently connected.
 		c.mu.Lock()
 		wasConnected := c.conn != nil
