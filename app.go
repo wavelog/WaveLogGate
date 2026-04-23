@@ -246,17 +246,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// UDP server.
 	if cfg.UDPEnabled {
-		a.udpSrv = udp.New(
-			cfg.UDPPort,
-			a.wlClient,
-			func(result *wavelog.QSOResult) {
-				wailsruntime.EventsEmit(a.ctx, "qso:result", result)
-			},
-			func(msg string) {
-				a.emitStatus(msg)
-			},
-		)
-		if err := a.udpSrv.Start(); err != nil {
+		if err := a.startUDPServer(cfg.UDPPort); err != nil {
 			a.emitStatus("UDP error: " + err.Error())
 		}
 	}
@@ -290,6 +280,37 @@ func (a *App) emitStatus(msg string) {
 	}
 }
 
+// applyProfile pushes a new active profile to all subsystems that cache it.
+func (a *App) applyProfile(profile config.Profile) {
+	a.wlClient.UpdateProfile(&profile)
+	a.poller.UpdateConfig(&profile)
+	a.rotator.UpdateProfile(profile)
+	a.startManagedHamlib(profile)
+}
+
+// startUDPServer creates and starts the UDP server, storing it in a.udpSrv.
+func (a *App) startUDPServer(port int) error {
+	a.udpSrv = udp.New(
+		port,
+		a.wlClient,
+		func(result *wavelog.QSOResult) {
+			wailsruntime.EventsEmit(a.ctx, "qso:result", result)
+		},
+		func(msg string) {
+			a.emitStatus(msg)
+		},
+	)
+	return a.udpSrv.Start()
+}
+
+// emitHamlibError emits a hamlib:status error event to the frontend.
+func (a *App) emitHamlibError(msg string) {
+	wailsruntime.EventsEmit(a.ctx, "hamlib:status", map[string]interface{}{
+		"running": false,
+		"message": msg,
+	})
+}
+
 func (a *App) emitURLWarning(url string) {
 	valid, warning := config.ValidateURL(url)
 	switch {
@@ -320,10 +341,7 @@ func (a *App) SaveConfig(cfg config.Config) config.Config {
 	// Validate Wavelog URL when config is saved.
 	a.emitURLWarning(profile.WavelogURL)
 
-	a.wlClient.UpdateProfile(&profile)
-	a.poller.UpdateConfig(&profile)
-	a.rotator.UpdateProfile(profile)
-	a.startManagedHamlib(profile)
+	a.applyProfile(profile)
 
 	wailsruntime.EventsEmit(a.ctx, "rotator:enabled", profile.RotatorEnabled)
 	wailsruntime.EventsEmit(a.ctx, "radio:enabled", profile.FlrigEna || profile.HamlibEna)
@@ -411,10 +429,7 @@ func (a *App) SwitchProfile(index int) error {
 	_ = config.Save(a.cfg)
 
 	profile := a.cfg.ActiveProfile()
-	a.wlClient.UpdateProfile(&profile)
-	a.poller.UpdateConfig(&profile)
-	a.rotator.UpdateProfile(profile)
-	a.startManagedHamlib(profile)
+	a.applyProfile(profile)
 
 	wailsruntime.EventsEmit(a.ctx, "profile:switched", map[string]interface{}{
 		"rotatorEnabled": profile.RotatorEnabled,
@@ -524,17 +539,7 @@ func (a *App) SaveAdvanced(udpEnabled bool, udpPort int, minimapEnabled bool, em
 		a.udpSrv = nil
 	}
 	if udpEnabled {
-		a.udpSrv = udp.New(
-			udpPort,
-			a.wlClient,
-			func(result *wavelog.QSOResult) {
-				wailsruntime.EventsEmit(a.ctx, "qso:result", result)
-			},
-			func(msg string) {
-				a.emitStatus(msg)
-			},
-		)
-		if err := a.udpSrv.Start(); err != nil {
+		if err := a.startUDPServer(udpPort); err != nil {
 			return err
 		}
 	}
@@ -663,10 +668,7 @@ func (a *App) StartHamlib() error {
 		defer a.hamlibStartMu.Unlock()
 		a.hamlibMgr.Stop()
 		if err := a.hamlibMgr.Start(profile); err != nil {
-			wailsruntime.EventsEmit(a.ctx, "hamlib:status", map[string]interface{}{
-				"running": false,
-				"message": err.Error(),
-			})
+			a.emitHamlibError(err.Error())
 		}
 	}()
 	return nil
@@ -712,18 +714,12 @@ func (a *App) startManagedHamlib(profile config.Profile) {
 
 		// Validate serial port before attempting to start rigctld.
 		if valid, warning := config.ValidateSerialPort(profile.HamlibDevice); !valid {
-			wailsruntime.EventsEmit(a.ctx, "hamlib:status", map[string]interface{}{
-				"running": false,
-				"message": "Configuration Error: " + warning,
-			})
+			a.emitHamlibError("Configuration Error: " + warning)
 			return
 		}
 
 		if err := a.hamlibMgr.Start(profile); err != nil {
-			wailsruntime.EventsEmit(a.ctx, "hamlib:status", map[string]interface{}{
-				"running": false,
-				"message": err.Error(),
-			})
+			a.emitHamlibError(err.Error())
 		}
 	}()
 }
