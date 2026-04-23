@@ -8,7 +8,7 @@
 
 <section class="bg-surface-section border border-stroke-section rounded-lg px-4 py-3">
   <div class="flex items-center justify-between {rotatorEnabled ? 'mb-3' : ''}">
-    <div class="text-2xs text-fg-bright font-semibold uppercase tracking-wider pl-2 border-l-2 border-stroke-accent">
+    <div class="text-2xs text-fg-bright font-semibold uppercase tracking-wider pl-2 border-l-2 border-accent-green">
       Rotator Control
     </div>
     <label class="text-fg-label text-xs">

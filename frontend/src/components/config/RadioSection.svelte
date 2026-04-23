@@ -171,7 +171,7 @@
 
 <section class="bg-surface-section border border-stroke-section rounded-lg px-4 py-3">
   <div class="flex items-center justify-between {radioEnabled ? 'mb-3' : ''}">
-    <div class="text-2xs text-fg-bright font-semibold uppercase tracking-wider pl-2 border-l-2 border-stroke-accent">
+    <div class="text-2xs text-fg-bright font-semibold uppercase tracking-wider pl-2 border-l-2 border-accent-orange">
       Radio Control
     </div>
     <label class="text-fg-label text-xs">
@@ -186,19 +186,20 @@
 
   {#if radioEnabled}
     <div class="flex flex-col gap-1.5">
-      <!-- Type selector -->
+      <!-- Type selector: segmented control -->
       <div class="flex items-center gap-2">
-        <label class="w-field-xs flex-shrink-0 text-fg-label text-2xs" for="radio-type">Type</label>
-        <select
-          id="radio-type"
-          class="flex-none w-field-sm"
-          value={radioType}
-          on:change={onTypeChange}
-        >
-          <option value="flrig">FLRig</option>
-          <option value="hamlib">Hamlib</option>
-          <option value="internal">Internal</option>
-        </select>
+        <span class="w-field-xs flex-shrink-0 text-fg-label text-2xs">Type</span>
+        <div class="flex rounded-md overflow-hidden border border-stroke-section">
+          {#each [["flrig","FLRig"],["hamlib","Hamlib"],["internal","Internal"]] as [val, label], i}
+            <button
+              class="flex-1 py-1 px-3 text-2xs font-medium border-0 {i > 0 ? 'border-l border-stroke-section' : ''} rounded-none transition-colors duration-100
+                {radioType === val
+                ? 'bg-surface-input text-fg-bright'
+                : 'bg-surface-app text-fg-secondary hover:bg-surface-section hover:text-fg-base'}"
+              on:click={() => dispatch("typechange", val)}
+            >{label}</button>
+          {/each}
+        </div>
       </div>
 
       <!-- Host / Port — hidden for "internal" (rigctld is local; port is in the managed section) -->

@@ -109,6 +109,8 @@
       <!-- Elevation rings: 60° and 30° above horizon -->
       <circle cx="80" cy="80" r="24" fill="none" stroke="#383838" stroke-width="0.75" stroke-dasharray="2,3"/>
       <circle cx="80" cy="80" r="48" fill="none" stroke="#383838" stroke-width="0.75" stroke-dasharray="2,3"/>
+      <text x="83" y="33" fill="#555" font-size="7" font-family="monospace">60°</text>
+      <text x="83" y="57" fill="#555" font-size="7" font-family="monospace">30°</text>
 
       <!-- Tick marks every 45° -->
       {#each [0, 45, 90, 135, 180, 225, 270, 315] as deg}
@@ -158,7 +160,7 @@
       <line
         x1="80" y1="80"
         x2={80 + 70 * Math.cos(azRad)} y2={80 + 70 * Math.sin(azRad)}
-        stroke="#55aaff" stroke-width="1" opacity="0.25" stroke-linecap="round"
+        stroke="#55aaff" stroke-width="1.5" opacity="0.5" stroke-linecap="round"
       />
       <circle cx={80 + elR * Math.cos(azRad)} cy={80 + elR * Math.sin(azRad)} r="5" fill="#55aaff"/>
 
@@ -201,7 +203,7 @@
     <button
       class="text-xs py-1.5 px-4 text-fg-bright hover:text-fg-base"
       on:click={() => dispatch("park")}
-    >Park ⟳</button>
+    ><i class="fa-solid fa-rotate mr-1"></i>Park</button>
   </div>
 
 </div>

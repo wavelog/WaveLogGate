@@ -37,8 +37,9 @@
   function buildSpans(freq) {
     if (!freq) return [];
     const dotIdx = freq.indexOf(".");
+    const totalDec = freq.length - dotIdx - 1;
     return freq.split("").map((ch, i) => {
-      if (ch === ".") return { char: ch, stepHz: 0 };
+      if (ch === ".") return { char: ch, stepHz: 0, dim: false };
       let stepHz;
       if (i < dotIdx) {
         const rightPos = dotIdx - 1 - i;
@@ -47,7 +48,8 @@
         const decPos = i - dotIdx - 1;
         stepHz = Math.round(Math.pow(10, -(decPos + 1)) * 1_000_000);
       }
-      return { char: ch, stepHz };
+      const dim = i > dotIdx && (totalDec - (i - dotIdx)) < 2;
+      return { char: ch, stepHz, dim };
     });
   }
 
@@ -108,12 +110,12 @@
     {#if freqMHz}
       {#if split}
         <span class="text-fg-muted text-2xs self-end mb-0.5">RX</span>
-        <span class="text-accent-value text-xl font-bold leading-none">{#each rxSpans as span}{#if span.stepHz}<span style="cursor:ns-resize" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz)}>{span.char}</span>{:else}{span.char}{/if}{/each}</span>
+        <span class="text-xl font-bold leading-none">{#each rxSpans as span}{#if span.stepHz}<span class="{span.dim ? 'text-fg-muted' : 'text-accent-value'} cursor-ns-resize hover:brightness-125" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz)}>{span.char}</span>{:else}<span class="text-accent-value">{span.char}</span>{/if}{/each}</span>
         <span class="text-fg-muted text-2xs self-end mb-0.5">MHz</span>
         <span class="bg-accent-orange/10 border border-accent-orange/40 text-accent-orange text-2xs font-bold px-1.5 py-0.5 rounded tracking-wider">SPLIT</span>
         {#if freqTxMHz}
           <span class="text-fg-muted text-2xs self-end mb-0.5">TX</span>
-          <span class="text-accent-value text-xl font-bold leading-none">{#each txSpans as span}{#if span.stepHz}<span style="cursor:ns-resize" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz, true)}>{span.char}</span>{:else}{span.char}{/if}{/each}</span>
+          <span class="text-xl font-bold leading-none">{#each txSpans as span}{#if span.stepHz}<span class="{span.dim ? 'text-fg-muted' : 'text-accent-value'} cursor-ns-resize hover:brightness-125" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz, true)}>{span.char}</span>{:else}<span class="text-accent-value">{span.char}</span>{/if}{/each}</span>
           <span class="text-fg-muted text-2xs self-end mb-0.5">MHz</span>
         {/if}
         {#if modeTx && modeTx !== mode}
@@ -122,7 +124,7 @@
           <span class="ml-auto bg-surface-app border border-stroke-section text-accent-orange text-xs font-semibold px-2 py-0.5 rounded-md">{mode}</span>
         {/if}
       {:else}
-        <span class="text-accent-value text-xl font-bold leading-none">{#each rxSpans as span}{#if span.stepHz}<span style="cursor:ns-resize" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz)}>{span.char}</span>{:else}{span.char}{/if}{/each}</span>
+        <span class="text-xl font-bold leading-none">{#each rxSpans as span}{#if span.stepHz}<span class="{span.dim ? 'text-fg-muted' : 'text-accent-value'} cursor-ns-resize hover:brightness-125" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz)}>{span.char}</span>{:else}<span class="text-accent-value">{span.char}</span>{/if}{/each}</span>
         <span class="text-fg-muted text-2xs self-end mb-0.5">MHz</span>
         {#if mode}
           <span class="ml-auto bg-surface-app border border-stroke-section text-accent-orange text-xs font-semibold px-2 py-0.5 rounded-md">{mode}</span>
@@ -133,20 +135,20 @@
     {/if}
   </div>
 
-  <!-- Row 2: QSO result (single compact line) -->
-  <div class="text-2xs leading-tight min-h-[16px]">
-    {#if qsoResult}
-      {#if qsoResult.success}
-        <span class="text-accent-green">✓</span>
-        <span class="text-fg-base font-semibold">{qsoResult.call}</span>
-        <span class="text-fg-muted">&nbsp;{qsoResult.band} {qsoResult.mode} {qsoResult.rstSent}/{qsoResult.rstRcvd} {qsoResult.timeOn}</span>
-      {:else}
-        <span class="text-red-400">✗</span>
-        <span class="text-fg-muted">&nbsp;{qsoResult.reason || "log error"}</span>
+  <!-- Row 2: QSO result (single compact line, fades in/out) -->
+  <div class="text-2xs leading-tight h-[16px] relative overflow-hidden">
+    <div class="transition-opacity duration-200 {qsoResult ? 'opacity-100' : 'opacity-0'} absolute inset-0">
+      {#if qsoResult}
+        {#if qsoResult.success}
+          <span class="text-accent-green">✓</span>
+          <span class="text-fg-base font-semibold">{qsoResult.call}</span>
+          <span class="text-fg-muted">&nbsp;{qsoResult.band} {qsoResult.mode} {qsoResult.rstSent}/{qsoResult.rstRcvd} {qsoResult.timeOn}</span>
+        {:else}
+          <span class="text-red-400">✗</span>
+          <span class="text-fg-muted">&nbsp;{qsoResult.reason || "log error"}</span>
+        {/if}
       {/if}
-    {:else}
-      <span class="text-fg-dim italic">–</span>
-    {/if}
+    </div>
   </div>
 
   <!-- Rotator section (only when enabled) -->

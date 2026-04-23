@@ -11,8 +11,9 @@
   function buildSpans(freq) {
     if (!freq) return [];
     const dotIdx = freq.indexOf(".");
+    const totalDec = freq.length - dotIdx - 1;
     return freq.split("").map((ch, i) => {
-      if (ch === ".") return { char: ch, stepHz: 0 };
+      if (ch === ".") return { char: ch, stepHz: 0, dim: false };
       let stepHz;
       if (i < dotIdx) {
         const rightPos = dotIdx - 1 - i;
@@ -21,7 +22,9 @@
         const decPos = i - dotIdx - 1;
         stepHz = Math.round(Math.pow(10, -(decPos + 1)) * 1_000_000);
       }
-      return { char: ch, stepHz };
+      // Last 2 decimal digits (10 Hz, 1 Hz precision) are dimmed
+      const dim = i > dotIdx && (totalDec - (i - dotIdx)) < 2;
+      return { char: ch, stepHz, dim };
     });
   }
 
@@ -43,12 +46,15 @@
         <div class="flex items-start gap-4">
           <div>
             <div class="text-fg-muted text-2xs uppercase tracking-wider mb-1">RX</div>
-            <div class="text-accent-value text-2xl font-bold tracking-tight leading-none">
+            <div class="text-2xl font-bold tracking-tight leading-none">
               {#each rxSpans as span}
                 {#if span.stepHz}
-                  <span style="cursor:ns-resize" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz)}>{span.char}</span>
+                  <span
+                    class="{span.dim ? 'text-fg-muted' : 'text-accent-value'} cursor-ns-resize hover:brightness-125"
+                    on:wheel|preventDefault={(e) => onWheel(e, span.stepHz)}
+                  >{span.char}</span>
                 {:else}
-                  {span.char}
+                  <span class="text-accent-value">{span.char}</span>
                 {/if}
               {/each}
             </div>
@@ -57,12 +63,15 @@
           {#if freqTxMHz}
             <div class="border-l border-stroke-section pl-4">
               <div class="text-fg-muted text-2xs uppercase tracking-wider mb-1">TX</div>
-              <div class="text-accent-value text-2xl font-bold tracking-tight leading-none">
+              <div class="text-2xl font-bold tracking-tight leading-none">
                 {#each txSpans as span}
                   {#if span.stepHz}
-                    <span style="cursor:ns-resize" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz, true)}>{span.char}</span>
+                    <span
+                      class="{span.dim ? 'text-fg-muted' : 'text-accent-value'} cursor-ns-resize hover:brightness-125"
+                      on:wheel|preventDefault={(e) => onWheel(e, span.stepHz, true)}
+                    >{span.char}</span>
                   {:else}
-                    {span.char}
+                    <span class="text-accent-value">{span.char}</span>
                   {/if}
                 {/each}
               </div>
@@ -83,12 +92,15 @@
     {:else}
       <div class="flex items-start justify-between">
         <div>
-          <div class="text-accent-value text-2xl font-bold tracking-tight leading-none">
+          <div class="text-2xl font-bold tracking-tight leading-none">
             {#each rxSpans as span}
               {#if span.stepHz}
-                <span style="cursor:ns-resize" on:wheel|preventDefault={(e) => onWheel(e, span.stepHz)}>{span.char}</span>
+                <span
+                  class="{span.dim ? 'text-fg-muted' : 'text-accent-value'} cursor-ns-resize hover:brightness-125"
+                  on:wheel|preventDefault={(e) => onWheel(e, span.stepHz)}
+                >{span.char}</span>
               {:else}
-                {span.char}
+                <span class="text-accent-value">{span.char}</span>
               {/if}
             {/each}
           </div>

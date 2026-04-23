@@ -9,7 +9,7 @@
     overflow: hidden;
     background: #303030;  /* surface-app */
     color: #c6c6c6;       /* fg-base */
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
     font-size: 13px;
   }
 
@@ -76,6 +76,13 @@
 }
 
 @layer components {
+  /* Primary button */
+  .btn-primary {
+    border-color: #5a9fd4;
+    color: #55aaff;
+  }
+  .btn-primary:hover { background: #404040; border-color: #6ab0e4; }
+
   /* Alerts */
   .alert {
     padding: 6px 10px;

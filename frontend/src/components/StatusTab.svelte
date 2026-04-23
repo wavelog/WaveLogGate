@@ -28,28 +28,25 @@
 
 <div class="py-2.5 px-3 flex flex-col gap-2">
 
-  <section class="bg-surface-card border border-stroke-subtle rounded-lg px-4 py-3">
-    <div class="text-fg-muted text-2xs uppercase tracking-widest font-semibold mb-3">
-      Status
-    </div>
-    {#if statusMsg}
-      <div class="alert alert-info font-mono text-2xs">{statusMsg}</div>
-    {/if}
-    {#if qsoResult}
-      {#if qsoResult.success}
-        <div class="alert alert-success">
-          ✓ QSO logged: <strong>{qsoResult.call}</strong>
-          {qsoResult.band} {qsoResult.mode} {qsoResult.rstSent}/{qsoResult.rstRcvd} {qsoResult.timeOn}
-        </div>
-      {:else}
-        <div class="alert alert-danger">
-          ✗ QSO NOT logged: {qsoResult.reason || "unknown error"}
-        </div>
+  {#if statusMsg || qsoResult}
+    <div class="px-1">
+      {#if statusMsg}
+        <div class="alert alert-info font-mono text-2xs">{statusMsg}</div>
       {/if}
-    {:else}
-      <div class="text-fg-dim text-sm italic">-</div>
-    {/if}
-  </section>
+      {#if qsoResult}
+        {#if qsoResult.success}
+          <div class="alert alert-success">
+            ✓ QSO logged: <strong>{qsoResult.call}</strong>
+            {qsoResult.band} {qsoResult.mode} {qsoResult.rstSent}/{qsoResult.rstRcvd} {qsoResult.timeOn}
+          </div>
+        {:else}
+          <div class="alert alert-danger">
+            ✗ QSO NOT logged: {qsoResult.reason || "unknown error"}
+          </div>
+        {/if}
+      {/if}
+    </div>
+  {/if}
 
   {#if radioEnabled}
     <TrxDisplay {freqMHz} {mode} {split} {freqTxMHz} {modeTx} on:freqscroll on:txfreqscroll />
