@@ -111,7 +111,7 @@
     </div>
 
     {#if advStatus}
-      <div class="alert alert-info mt-2">{advStatus}</div>
+      <div class="alert mt-2 {advStatus.startsWith('Error') ? 'alert-danger' : 'alert-success'}">{advStatus}</div>
     {/if}
 
     <div class="mt-3 flex gap-1.5 justify-end">

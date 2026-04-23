@@ -81,10 +81,6 @@
     dispatch("typechange", e.currentTarget.checked ? lastType : "none");
   }
 
-  function onTypeChange(e) {
-    dispatch("typechange", e.currentTarget.value);
-  }
-
   async function searchModels(q) {
     modelResults = await SearchRadioModels(q);
     modelDropdownOpen = modelResults.length > 0;

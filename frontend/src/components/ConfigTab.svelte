@@ -48,6 +48,7 @@
 
   async function reloadConfig() {
     cfg = await GetConfig();
+    dirty = false;
     stations = [];
     loadStations();
   }

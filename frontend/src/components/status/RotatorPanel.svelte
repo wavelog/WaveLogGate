@@ -84,14 +84,14 @@
 
   <!-- Az / El instrument tiles -->
   <div class="flex gap-2">
-    <div class="flex-1 bg-surface-app border border-stroke-section rounded-md px-3 py-2.5 flex flex-col gap-0.5"
-      style="cursor:ns-resize" title="Scroll to adjust azimuth"
+    <div class="flex-1 bg-surface-app border border-stroke-section rounded-md px-3 py-2.5 flex flex-col gap-0.5 cursor-ns-resize"
+      title="Scroll to adjust azimuth"
       on:wheel|preventDefault={onAzWheel}>
       <span class="text-fg-muted text-2xs uppercase tracking-wider">Azimuth</span>
       <span class="text-accent-value text-xl font-bold leading-tight">{rotAz.toFixed(1)}°</span>
     </div>
-    <div class="flex-1 bg-surface-app border border-stroke-section rounded-md px-3 py-2.5 flex flex-col gap-0.5"
-      style="cursor:ns-resize" title="Scroll to adjust elevation"
+    <div class="flex-1 bg-surface-app border border-stroke-section rounded-md px-3 py-2.5 flex flex-col gap-0.5 cursor-ns-resize"
+      title="Scroll to adjust elevation"
       on:wheel|preventDefault={onElWheel}>
       <span class="text-fg-muted text-2xs uppercase tracking-wider">Elevation</span>
       <span class="text-accent-value text-xl font-bold leading-tight">{rotEl.toFixed(1)}°</span>
@@ -102,7 +102,7 @@
   {#if showMap}
   <div class="flex justify-center">
     <svg viewBox="0 0 160 160" width="160" height="160" xmlns="http://www.w3.org/2000/svg"
-      style="cursor:crosshair" title="Click to point rotator" on:click={onMapClick}>
+      class="cursor-crosshair" title="Click to point rotator" on:click={onMapClick}>
       <!-- Background -->
       <circle cx="80" cy="80" r="72" fill="#1e1e1e" stroke="#404040" stroke-width="1"/>
 

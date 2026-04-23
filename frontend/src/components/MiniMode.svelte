@@ -157,11 +157,11 @@
     <div class="flex items-center gap-3 font-mono border-t border-stroke-section pt-1.5">
       <div class="flex items-center gap-1">
         <span class="text-fg-muted text-2xs uppercase tracking-wider">Az</span>
-        <span class="text-accent-value text-sm font-bold" style="cursor:ns-resize" title="Scroll to adjust azimuth" on:wheel|preventDefault={onAzWheel}>{rotAz.toFixed(1)}°</span>
+        <span class="text-accent-value text-sm font-bold cursor-ns-resize" title="Scroll to adjust azimuth" on:wheel|preventDefault={onAzWheel}>{rotAz.toFixed(1)}°</span>
       </div>
       <div class="flex items-center gap-1">
         <span class="text-fg-muted text-2xs uppercase tracking-wider">El</span>
-        <span class="text-accent-value text-sm font-bold" style="cursor:ns-resize" title="Scroll to adjust elevation" on:wheel|preventDefault={onElWheel}>{rotEl.toFixed(1)}°</span>
+        <span class="text-accent-value text-sm font-bold cursor-ns-resize" title="Scroll to adjust elevation" on:wheel|preventDefault={onElWheel}>{rotEl.toFixed(1)}°</span>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
         {#if rotMoving}
@@ -194,7 +194,7 @@
     {#if minimapEnabled}
       <div class="flex justify-center pt-0.5">
         <svg viewBox="0 0 110 110" width="110" height="110" xmlns="http://www.w3.org/2000/svg"
-          style="cursor:crosshair" title="Click to point rotator" on:click={onMinimapClick}>
+          class="cursor-crosshair" title="Click to point rotator" on:click={onMinimapClick}>
           <!-- Background -->
           <circle cx="55" cy="55" r="50" fill="#1e1e1e" stroke="#404040" stroke-width="1"/>
           <!-- Elevation rings -->
