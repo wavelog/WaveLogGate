@@ -1,3 +1,23 @@
+// Package rotator provides a TCP client for rotctld (hamlib's rotator daemon).
+//
+// Architecture:
+//
+//	The run() goroutine owns the TCP socket and processes commands sequentially.
+//	A separate readLoop goroutine reads lines from the socket and feeds them to onLine.
+//	All shared state is guarded by Client.mu.
+//
+// Position command flow (set):
+//
+//	 1. Caller sets pendingSet and signals cmdCh
+//	 2. processQueue sends "S" (stop), waits for RPRT
+//	 3. On RPRT, sends "P az el", waits for RPRT
+//	 4. On P's RPRT, sets forcePoll=true to confirm actual position before any new move
+//
+// Polling:
+//
+//	Every pollInterval, a "p" command is queued unless suppressed (pollSuppression after
+//	a set, or a pending command is in flight). After a set completes, forcePoll ensures
+//	the confirmation poll runs before any queued bearing updates.
 package rotator
 
 import (
@@ -15,7 +35,8 @@ import (
 )
 
 const (
-	busyWatchdog    = 5 * time.Second
+	busyWatchdogSet = 5 * time.Second
+	busyWatchdogGet = 10 * time.Second
 	pollInterval    = 1 * time.Second
 	pollSuppression = 3 * time.Second
 	connTimeout     = 3 * time.Second
@@ -51,6 +72,7 @@ type Client struct {
 	buf        string
 
 	currentCmd  string // "set" | "get" | ""
+	busyCmdKind string // "set" | "get" — what the busy timer guards
 	busyTimer   *time.Timer
 	pendingSet  *Position // latest P command not yet sent
 	pollPending bool
@@ -59,10 +81,12 @@ type Client struct {
 	stopAfter   *Position // P to issue after S's RPRT
 	lastMoving  bool
 
+	forcePoll bool // after a P RPRT, run poll before any pendingSet
+
 	lastCmdPos Position
 	currentPos Position
 
-	pendingPark bool // when true, pendingSet is a park command — bypass threshold
+	bypassThreshold bool // when true, skip movement threshold for next pendingSet
 
 	lastWsCmd time.Time
 	pendingWs *wsCmd
@@ -74,8 +98,9 @@ type Client struct {
 	OnMoving   func(moving bool)                // → Wails event rotator:moving
 	OnError    func(msg string)                 // → Wails event status:message
 
-	cmdCh  chan struct{}
-	stopCh chan struct{}
+	cmdCh    chan struct{}
+	stopCh   chan struct{}
+	stopOnce sync.Once
 }
 
 // New creates a new Client with the given profile.
@@ -93,9 +118,11 @@ func (c *Client) Start() {
 	go c.run()
 }
 
-// Stop shuts down the client.
+// Stop shuts down the client. Safe to call multiple times.
 func (c *Client) Stop() {
-	close(c.stopCh)
+	c.stopOnce.Do(func() {
+		close(c.stopCh)
+	})
 }
 
 // UpdateProfile updates the configuration. Triggers a reconnect if host/port changed.
@@ -115,6 +142,7 @@ func (c *Client) SetFollow(mode FollowMode) {
 		c.pendingWs = nil
 		c.stopAfter = nil
 		c.stopping = false
+		c.bypassThreshold = false
 		if c.wsTimer != nil {
 			c.wsTimer.Stop()
 			c.wsTimer = nil
@@ -144,15 +172,22 @@ func (c *Client) GotoPosition(az, el float64) {
 	c.mu.Lock()
 	c.followMode = FollowOff
 	c.pendingSet = &Position{Az: az, El: el}
-	c.pendingPark = true
+	c.bypassThreshold = true
 	c.pendingWs = nil
 	if c.wsTimer != nil {
 		c.wsTimer.Stop()
 		c.wsTimer = nil
 	}
+	// Optimistic update: reflect the commanded target immediately so
+	// the UI shows a non-zero position even on rotators with no feedback.
+	c.currentPos = Position{Az: az, El: el}
+	onPosition := c.OnPosition
 	c.notifyMoving()
 	c.mu.Unlock()
 	c.signal()
+	if onPosition != nil {
+		go onPosition(az, el)
+	}
 }
 
 // Park sets follow to off and queues a move to the park position, bypassing threshold.
@@ -160,7 +195,7 @@ func (c *Client) Park() {
 	c.mu.Lock()
 	c.followMode = FollowOff
 	c.pendingSet = &Position{Az: c.cfg.RotatorParkAz, El: c.cfg.RotatorParkEl}
-	c.pendingPark = true
+	c.bypassThreshold = true
 	c.notifyMoving()
 	c.mu.Unlock()
 	c.signal()
@@ -169,25 +204,19 @@ func (c *Client) Park() {
 // HandleWSCommand handles an incoming bearing update from WS (rate-limited).
 // Always fires OnBearing immediately for live display.
 func (c *Client) HandleWSCommand(az, el float64, typ string) {
-	// Always update bearing display.
 	c.mu.Lock()
-	onBearing := c.OnBearing
-	followMode := c.followMode
-	currentAz := c.currentPos.Az
-	c.mu.Unlock()
+	defer c.mu.Unlock()
 
 	debug.Log("[ROT] WS bearing: type=%s demanded_az=%.1f el=%.1f current_az=%.1f follow=%s",
-		typ, az, el, currentAz, followMode)
+		typ, az, el, c.currentPos.Az, c.followMode)
 
-	if onBearing != nil {
-		onBearing(typ, az, el)
+	if c.OnBearing != nil {
+		cb := c.OnBearing
+		go cb(typ, az, el)
 	}
 
-	// Only queue rotator move if follow mode matches.
-	c.mu.Lock()
-	if (typ == "hf" && followMode != FollowHF) || (typ == "sat" && followMode != FollowSAT) {
-		debug.Log("[ROT] WS bearing dropped: follow=%s does not match type=%s — no move queued", followMode, typ)
-		c.mu.Unlock()
+	if (typ == "hf" && c.followMode != FollowHF) || (typ == "sat" && c.followMode != FollowSAT) {
+		debug.Log("[ROT] WS bearing dropped: follow=%s does not match type=%s — no move queued", c.followMode, typ)
 		return
 	}
 
@@ -201,7 +230,6 @@ func (c *Client) HandleWSCommand(az, el float64, typ string) {
 		}
 		debug.Log("[ROT] WS bearing queued immediately: az=%.1f el=%.1f", az, el)
 		c.notifyMoving()
-		c.mu.Unlock()
 		c.signal()
 		return
 	}
@@ -231,7 +259,6 @@ func (c *Client) HandleWSCommand(az, el float64, typ string) {
 			c.signal()
 		})
 	}
-	c.mu.Unlock()
 }
 
 // GetFollowMode returns the current follow mode.
@@ -293,12 +320,13 @@ func (c *Client) ensureConnected() {
 	c.mu.Lock()
 	host := c.cfg.RotatorHost
 	port := c.cfg.RotatorPort
+	enabled := c.cfg.RotatorEnabled
 	target := host + ":" + port
 	conn := c.conn
 	connTarget := c.connTarget
 	c.mu.Unlock()
 
-	if host == "" || !c.cfg.RotatorEnabled {
+	if host == "" || !enabled {
 		// No host configured or rotator disabled — disconnect if currently connected.
 		c.mu.Lock()
 		wasConnected := c.conn != nil
@@ -341,6 +369,7 @@ func (c *Client) ensureConnected() {
 	c.currentCmd = ""
 	c.pendingSet = nil
 	c.pollPending = true // poll immediately on connect
+	c.forcePoll = false
 	c.stopping = false
 	c.stopAfter = nil
 	if c.busyTimer != nil {
@@ -409,9 +438,12 @@ func (c *Client) onLine(line string) {
 				}
 			} else {
 				debug.Log("[ROT] RPRT %s for P received", code)
+				// Reset suppression so the next tick polls the actual position.
+				c.lastPTime = time.Time{}
+				c.pollPending = true
+				c.forcePoll = true
 			}
 			c.notifyMoving()
-			c.pollPending = false
 			c.buf = ""
 			c.signal()
 		}
@@ -431,11 +463,10 @@ func (c *Client) onLine(line string) {
 				gotRPRT = true
 				continue
 			}
-			// Take the last whitespace-separated field — works for both
-			// bare "123.0" and labelled "Azimuth: 123.0".
-			fields := strings.Fields(l)
-			if len(fields) > 0 {
-				if v, err := strconv.ParseFloat(fields[len(fields)-1], 64); err == nil {
+			// Parse all whitespace-separated fields — handles bare "123.0",
+			// labelled "Azimuth: 123.0", and same-line "180.0 45.0" formats.
+			for _, f := range strings.Fields(l) {
+				if v, err := strconv.ParseFloat(f, 64); err == nil {
 					nums = append(nums, v)
 				}
 			}
@@ -450,9 +481,19 @@ func (c *Client) onLine(line string) {
 			c.clearBusy()
 			c.buf = ""
 			c.signal()
+		} else if len(nums) == 1 && gotRPRT {
+			// Az-only rotator: single value is azimuth, elevation stays 0.
+			c.currentPos = Position{Az: nums[0], El: 0}
+			if c.OnPosition != nil {
+				az := c.currentPos.Az
+				go c.OnPosition(az, 0)
+			}
+			c.clearBusy()
+			c.buf = ""
+			c.signal()
 		} else if gotRPRT {
-			// RPRT arrived but couldn't parse ≥2 floats — rotctld may not support p
-			debug.Log("[ROT] p RPRT received but insufficient data: %v", nums)
+			// RPRT with no position floats — rotctld may not support p.
+			debug.Log("[ROT] p RPRT received but no position data: %v", nums)
 			c.clearBusy()
 			c.buf = ""
 			c.signal()
@@ -469,14 +510,25 @@ func (c *Client) processQueue() {
 		return
 	}
 
+	// After a P RPRT, confirm actual position before processing new moves.
+	if c.forcePoll && c.pollPending {
+		c.forcePoll = false
+		c.pollPending = false
+		fmt.Fprintf(c.conn, "p\n")
+		c.currentCmd = "get"
+		c.armBusy("get")
+		return
+	}
+	c.forcePoll = false
+
 	if c.pendingSet != nil {
 		pos := c.pendingSet
-		isPark := c.pendingPark
+		bypass := c.bypassThreshold
 		c.pendingSet = nil
-		c.pendingPark = false
+		c.bypassThreshold = false
 
-		// Check threshold (skip for explicit park commands).
-		if !isPark {
+		// Check threshold (skip when bypass flag is set).
+		if !bypass {
 			diffAz := math.Abs(pos.Az - c.lastCmdPos.Az)
 			if diffAz > 180 {
 				diffAz = 360 - diffAz
@@ -486,6 +538,7 @@ func (c *Client) processQueue() {
 				pos.Az, c.lastCmdPos.Az, diffAz, c.cfg.RotatorThresholdAz, diffEl, c.cfg.RotatorThresholdEl)
 			if diffAz < c.cfg.RotatorThresholdAz && diffEl < c.cfg.RotatorThresholdEl {
 				debug.Log("[ROT] threshold not reached — P suppressed")
+				c.notifyMoving()
 				return
 			}
 		}
@@ -503,7 +556,7 @@ func (c *Client) processQueue() {
 		c.currentCmd = "set"
 		c.stopping = true
 		c.stopAfter = pos
-		c.armBusy()
+		c.armBusy("set")
 		c.notifyMoving()
 		return
 	}
@@ -512,7 +565,7 @@ func (c *Client) processQueue() {
 		c.pollPending = false
 		fmt.Fprintf(c.conn, "p\n")
 		c.currentCmd = "get"
-		c.armBusy()
+		c.armBusy("get")
 	}
 }
 
@@ -527,7 +580,7 @@ func (c *Client) sendP(pos *Position) {
 	c.lastCmdPos = *pos
 	c.lastPTime = time.Now()
 	c.currentCmd = "set"
-	c.armBusy()
+	c.armBusy("set")
 }
 
 // notifyMoving fires OnMoving if the moving state has changed. Must be called with mu held.
@@ -543,22 +596,29 @@ func (c *Client) notifyMoving() {
 	}
 }
 
-// armBusy arms the busy watchdog timer. Must be called with mu held.
-func (c *Client) armBusy() {
+// armBusy arms the busy watchdog timer. kind is "set" or "get". Must be called with mu held.
+func (c *Client) armBusy(kind string) {
 	if c.busyTimer != nil {
 		c.busyTimer.Stop()
 	}
-	c.busyTimer = time.AfterFunc(busyWatchdog, func() {
+	c.busyCmdKind = kind
+	timeout := busyWatchdogSet
+	if kind == "get" {
+		timeout = busyWatchdogGet
+	}
+	c.busyTimer = time.AfterFunc(timeout, func() {
 		c.mu.Lock()
+		kind := c.busyCmdKind
 		c.currentCmd = ""
+		c.busyCmdKind = ""
 		c.buf = ""
-		if c.stopping {
+		if kind == "set" && c.stopping {
 			// S timed out — rescue target so next processQueue retries
 			c.stopping = false
 			if c.stopAfter != nil {
 				c.pendingSet = c.stopAfter
 				c.stopAfter = nil
-				c.pendingPark = true // bypass threshold
+				c.bypassThreshold = true // bypass threshold
 			}
 		}
 		c.notifyMoving()
@@ -584,7 +644,10 @@ func (c *Client) closeSocket() {
 	}
 	c.connTarget = ""
 	c.currentCmd = ""
+	c.busyCmdKind = ""
 	c.buf = ""
+	c.forcePoll = false
+	c.bypassThreshold = false
 	if c.busyTimer != nil {
 		c.busyTimer.Stop()
 		c.busyTimer = nil

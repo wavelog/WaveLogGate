@@ -47,7 +47,7 @@ type Station struct {
 type Client struct {
 	cfg        *config.Profile
 	httpClient *http.Client
-	appVersion string
+	userAgent  string
 }
 
 // New creates a new Wavelog client.
@@ -61,7 +61,7 @@ func New(cfg *config.Profile, appVersion string) *Client {
 			Timeout:   5 * time.Second,
 			Transport: transport,
 		},
-		appVersion: appVersion,
+		userAgent: "WavelogGate/" + appVersion,
 	}
 }
 
@@ -115,7 +115,7 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 		return nil, fmt.Errorf("internet problem")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "SW2WL_v"+c.appVersion)
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -208,7 +208,7 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", strings.TrimRight("WavelogGate2 "+c.appVersion, " "))
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -226,7 +226,7 @@ func (c *Client) GetStations() ([]Station, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "SW2WL_v"+c.appVersion)
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

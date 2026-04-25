@@ -3,6 +3,10 @@ module.exports = {
   content: ['./index.html', './src/**/*.{svelte,js}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+      },
       colors: {
         surface: {
           app:     '#303030',  // body background

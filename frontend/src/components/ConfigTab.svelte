@@ -21,6 +21,7 @@
 
   let showProfileModal = false;
   let showAdvancedModal = false;
+  let dirty = false;
 
   onMount(async () => {
     cfg = await GetConfig();
@@ -35,6 +36,7 @@
   function setProfileField(key, value) {
     cfg.profiles[cfg.profile][key] = value;
     cfg = cfg; // trigger reactivity
+    dirty = true;
   }
 
   async function loadStations() {
@@ -46,12 +48,14 @@
 
   async function reloadConfig() {
     cfg = await GetConfig();
+    dirty = false;
     stations = [];
     loadStations();
   }
 
   async function save() {
     cfg = await SaveConfig(cfg);
+    dirty = false;
     saveMsg = "Saved ✓";
     setTimeout(() => (saveMsg = ""), 3000);
   }
@@ -127,11 +131,14 @@
     <!-- Bottom action bar -->
     <div class="border-t border-stroke-section pt-2.5 flex items-center justify-between">
       <div class="flex gap-2">
-        <button class="border-stroke-accent text-fg-bright" on:click={save}>Save</button>
+        <button
+          class="transition-colors duration-150 {dirty ? 'border-stroke-accent text-accent-value' : ''}"
+          on:click={save}
+        >{dirty ? "Save Changes" : "Save"}</button>
         <button on:click={test}>Test</button>
       </div>
       <div class="flex gap-1.5">
-        <button on:click={() => (showAdvancedModal = true)}>⚙ Advanced</button>
+        <button on:click={() => (showAdvancedModal = true)}><i class="fa-solid fa-gear mr-1"></i>Advanced</button>
       </div>
     </div>
 

@@ -84,14 +84,14 @@
 
   <!-- Az / El instrument tiles -->
   <div class="flex gap-2">
-    <div class="flex-1 bg-surface-app border border-stroke-section rounded-md px-3 py-2.5 flex flex-col gap-0.5"
-      style="cursor:ns-resize" title="Scroll to adjust azimuth"
+    <div class="flex-1 bg-surface-app border border-stroke-section rounded-md px-3 py-2.5 flex flex-col gap-0.5 cursor-ns-resize"
+      title="Scroll to adjust azimuth"
       on:wheel|preventDefault={onAzWheel}>
       <span class="text-fg-muted text-2xs uppercase tracking-wider">Azimuth</span>
       <span class="text-accent-value text-xl font-bold leading-tight">{rotAz.toFixed(1)}°</span>
     </div>
-    <div class="flex-1 bg-surface-app border border-stroke-section rounded-md px-3 py-2.5 flex flex-col gap-0.5"
-      style="cursor:ns-resize" title="Scroll to adjust elevation"
+    <div class="flex-1 bg-surface-app border border-stroke-section rounded-md px-3 py-2.5 flex flex-col gap-0.5 cursor-ns-resize"
+      title="Scroll to adjust elevation"
       on:wheel|preventDefault={onElWheel}>
       <span class="text-fg-muted text-2xs uppercase tracking-wider">Elevation</span>
       <span class="text-accent-value text-xl font-bold leading-tight">{rotEl.toFixed(1)}°</span>
@@ -102,13 +102,15 @@
   {#if showMap}
   <div class="flex justify-center">
     <svg viewBox="0 0 160 160" width="160" height="160" xmlns="http://www.w3.org/2000/svg"
-      style="cursor:crosshair" title="Click to point rotator" on:click={onMapClick}>
+      class="cursor-crosshair" title="Click to point rotator" on:click={onMapClick}>
       <!-- Background -->
       <circle cx="80" cy="80" r="72" fill="#1e1e1e" stroke="#404040" stroke-width="1"/>
 
       <!-- Elevation rings: 60° and 30° above horizon -->
       <circle cx="80" cy="80" r="24" fill="none" stroke="#383838" stroke-width="0.75" stroke-dasharray="2,3"/>
       <circle cx="80" cy="80" r="48" fill="none" stroke="#383838" stroke-width="0.75" stroke-dasharray="2,3"/>
+      <text x="83" y="33" fill="#555" font-size="7" font-family="monospace">60°</text>
+      <text x="83" y="57" fill="#555" font-size="7" font-family="monospace">30°</text>
 
       <!-- Tick marks every 45° -->
       {#each [0, 45, 90, 135, 180, 225, 270, 315] as deg}
@@ -158,7 +160,7 @@
       <line
         x1="80" y1="80"
         x2={80 + 70 * Math.cos(azRad)} y2={80 + 70 * Math.sin(azRad)}
-        stroke="#55aaff" stroke-width="1" opacity="0.25" stroke-linecap="round"
+        stroke="#55aaff" stroke-width="1.5" opacity="0.5" stroke-linecap="round"
       />
       <circle cx={80 + elR * Math.cos(azRad)} cy={80 + elR * Math.sin(azRad)} r="5" fill="#55aaff"/>
 
@@ -201,7 +203,7 @@
     <button
       class="text-xs py-1.5 px-4 text-fg-bright hover:text-fg-base"
       on:click={() => dispatch("park")}
-    >Park ⟳</button>
+    ><i class="fa-solid fa-rotate mr-1"></i>Park</button>
   </div>
 
 </div>

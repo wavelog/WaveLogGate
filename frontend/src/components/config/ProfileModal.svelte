@@ -14,6 +14,7 @@
   let newProfileName = "";
   let renameIndex = -1;
   let renameName = "";
+  let deleteError = "";
 
   async function doCreateProfile() {
     if (!newProfileName.trim()) return;
@@ -23,11 +24,12 @@
   }
 
   async function doDeleteProfile(i) {
+    deleteError = "";
     try {
       await DeleteProfile(i);
       dispatch("configchanged");
     } catch (e) {
-      alert(e);
+      deleteError = String(e);
     }
   }
 
@@ -86,6 +88,10 @@
         </div>
       {/each}
     </div>
+
+    {#if deleteError}
+      <div class="alert alert-danger mb-2">{deleteError}</div>
+    {/if}
 
     <div class="flex gap-1.5">
       <input
