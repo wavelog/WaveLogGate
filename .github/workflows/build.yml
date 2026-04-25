@@ -34,10 +34,13 @@ jobs:
             artifact: WavelogGate-darwin-amd64
           - os: windows-latest
             platform: windows/amd64
-            artifact: WavelogGate-windows-amd64
+            artifact: WavelogGate-windows-amd64-x64
           - os: windows-latest
             platform: windows/386
-            artifact: WavelogGate-windows-x86
+            artifact: WavelogGate-windows-i386-x86
+          - os: windows-latest
+            platform: windows/arm64
+            artifact: WavelogGate-windows-arm64
           - os: ubuntu-22.04
             platform: linux/amd64
             artifact: WavelogGate-linux-amd64-webkit4.0
@@ -217,7 +220,8 @@ jobs:
           files: |
             artifacts/WavelogGate-darwin-arm64/*.dmg
             artifacts/WavelogGate-darwin-amd64/*.dmg
-            artifacts/WavelogGate-windows-amd64/WavelogGate-windows-amd64.exe
-            artifacts/WavelogGate-windows-x86/WavelogGate-windows-x86.exe
+            artifacts/WavelogGate-windows-amd64-x64/WavelogGate-windows-amd64-x64.exe
+            artifacts/WavelogGate-windows-i386-x86/WavelogGate-windows-i386-x86.exe
+            artifacts/WavelogGate-windows-arm64/WavelogGate-windows-arm64.exe
             artifacts/WavelogGate-linux-amd64-webkit4.0/*.deb
             artifacts/WavelogGate-linux-amd64-webkit4.1/*.deb
