@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"log"
 	"os"
 
 	"github.com/wailsapp/wails/v2"
@@ -19,6 +20,14 @@ func main() {
 		if arg == "-debug" {
 			debug.Verbose = true
 			break
+		}
+	}
+
+	if debug.Verbose {
+		f, err := os.OpenFile("waveloggate-debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err == nil {
+			log.SetOutput(f)
+			defer f.Close()
 		}
 	}
 
