@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"waveloggate/internal/adif"
+	"waveloggate/internal/debug"
 	"waveloggate/internal/wavelog"
 )
 
@@ -80,31 +81,37 @@ func (s *Server) readLoop() {
 }
 
 func (s *Server) handleDatagram(data string) {
+	debug.Log("[UDP] raw datagram received (%d bytes)", len(data))
+
 	var fields map[string]string
 	var err error
 
 	if strings.Contains(data, "xml") {
-		// FLDigi XML path.
+		debug.Log("[UDP] detected format: XML (FLDigi/N1MM)")
 		fields, err = adif.ParseXML(data)
 		if err != nil {
+			debug.Log("[UDP] XML parse failed: %v", err)
 			if s.onStatus != nil {
 				s.onStatus("Received broken XML: " + err.Error())
 			}
 			return
 		}
 	} else {
-		// WSJT-X ADIF path.
+		debug.Log("[UDP] detected format: ADIF (WSJT-X)")
 		normalized := adif.NormalizeTXPwr(data)
 		normalized = adif.NormalizeKIndex(normalized)
 		fields = adif.Parse(normalized)
 	}
 
 	if len(fields) == 0 {
+		debug.Log("[UDP] no ADIF fields parsed — dropping datagram")
 		if s.onStatus != nil {
 			s.onStatus("No ADIF detected. WSJT-X: Use ONLY Secondary UDP-Server")
 		}
 		return
 	}
+
+	debug.Log("[UDP] parsed %d fields: %v", len(fields), fields)
 
 	// Enrich band if missing.
 	if _, ok := fields["BAND"]; !ok {
@@ -113,11 +120,13 @@ func (s *Server) handleDatagram(data string) {
 			fmt.Sscanf(freqStr, "%f", &mhz)
 			if band := adif.FreqToBand(mhz); band != "" {
 				fields["BAND"] = band
+				debug.Log("[UDP] band enriched from freq %s MHz -> %s", freqStr, band)
 			}
 		}
 	}
 
 	adifStr := adif.MapToADIF(fields)
+	debug.Log("[UDP] final ADIF: %s", adifStr)
 
 	if s.wlClient == nil {
 		return
@@ -125,8 +134,12 @@ func (s *Server) handleDatagram(data string) {
 
 	result, err := s.wlClient.SendQSO(adifStr, false)
 	if err != nil {
+		debug.Log("[UDP] SendQSO error: %v", err)
 		result = &wavelog.QSOResult{Success: false, Reason: err.Error()}
 	}
+
+	debug.Log("[UDP] QSO result: success=%v call=%s band=%s mode=%s reason=%s",
+		result.Success, result.Call, result.Band, result.Mode, result.Reason)
 
 	if s.onResult != nil {
 		s.onResult(result)

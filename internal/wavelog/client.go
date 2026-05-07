@@ -12,6 +12,7 @@ import (
 
 	"waveloggate/internal/adif"
 	"waveloggate/internal/config"
+	"waveloggate/internal/debug"
 )
 
 // QSOResult holds the result of a QSO submission.
@@ -89,12 +90,21 @@ type apiResponse struct {
 	TimeOn   string   `json:"time_on"`
 }
 
+// redactKey masks all but the last 4 characters of an API key.
+func redactKey(key string) string {
+	if len(key) <= 4 {
+		return "****"
+	}
+	return strings.Repeat("*", len(key)-4) + key[len(key)-4:]
+}
+
 // SendQSO posts an ADIF string to Wavelog. dryRun uses /api/qso/true.
 func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	endpoint := strings.TrimRight(c.cfg.WavelogURL, "/") + "/api/qso"
 	if dryRun {
 		endpoint += "/true"
 	}
+	debug.Log("[WL] endpoint: %s  dryRun=%v", endpoint, dryRun)
 
 	// Extract QSO details from ADIF for response (since API doesn't return them for ADIF type)
 	qsoInfo := adif.Parse(adifStr)
@@ -109,6 +119,7 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	debug.Log("[WL] payload: %s", strings.Replace(string(body), c.cfg.WavelogKey, redactKey(c.cfg.WavelogKey), -1))
 
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -119,6 +130,7 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		debug.Log("[WL] HTTP error: %v", err)
 		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline") {
 			return &QSOResult{Success: false, Reason: "timeout"}, nil
 		}
@@ -128,18 +140,22 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 
 	data, _ := io.ReadAll(resp.Body)
 	bodyStr := string(data)
+	debug.Log("[WL] HTTP %d  response: %s", resp.StatusCode, bodyStr)
 
 	// Detect HTML response (wrong URL).
 	if strings.Contains(bodyStr, "<html") || strings.Contains(bodyStr, "<!DOCTYPE") {
+		debug.Log("[WL] response is HTML — wrong URL")
 		return &QSOResult{Success: false, Reason: "wrong URL"}, nil
 	}
 
 	var ar apiResponse
 	if err := json.Unmarshal(data, &ar); err != nil {
+		debug.Log("[WL] JSON unmarshal failed: %v  raw: %s", err, bodyStr)
 		return &QSOResult{Success: false, Reason: "invalid response"}, nil
 	}
 
 	if ar.Status == "created" {
+		debug.Log("[WL] QSO created: call=%s band=%s mode=%s", qsoInfo["CALL"], qsoInfo["BAND"], qsoInfo["MODE"])
 		// For ADIF type, Wavelog API doesn't return QSO details
 		// Use the extracted info from our ADIF string
 		return &QSOResult{
@@ -157,6 +173,7 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	if reason == "" {
 		reason = ar.Status
 	}
+	debug.Log("[WL] QSO rejected: status=%s reason=%s", ar.Status, reason)
 	return &QSOResult{Success: false, Reason: reason}, nil
 }
 
