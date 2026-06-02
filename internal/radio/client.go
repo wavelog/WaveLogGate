@@ -441,7 +441,10 @@ func (c *HamlibClient) GetModes() ([]string, error) {
 	for {
 		line, err := reader.ReadString('\n')
 		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "RPRT") {
+		if strings.HasPrefix(line, "RPRT") {
+			break
+		}
+		if line != "" {
 			parts := strings.Fields(line)
 			modes = append(modes, parts...)
 		}
