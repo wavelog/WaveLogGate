@@ -35,6 +35,9 @@ type RadioData struct {
 	FrequencyRx int64
 	ModeRx      string
 	Split       bool
+	PropMode    string
+	SatName     string
+	SatMode     string
 }
 
 // Station represents a Wavelog station profile.
@@ -185,6 +188,9 @@ type radioPayload struct {
 	Power       float64 `json:"power,omitempty"`
 	FrequencyRx int64   `json:"frequency_rx,omitempty"`
 	ModeRx      string  `json:"mode_rx,omitempty"`
+	PropMode    string  `json:"prop_mode,omitempty"`
+	SatName     string  `json:"sat_name,omitempty"`
+	SatMode     string  `json:"sat_mode,omitempty"`
 }
 
 // UpdateRadioStatus posts radio status to Wavelog's /api/radio.
@@ -209,6 +215,9 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 		Mode:        mode,
 		FrequencyRx: freqRx,
 		ModeRx:      modeRx,
+		PropMode:    data.PropMode,
+		SatName:     data.SatName,
+		SatMode:     data.SatMode,
 	}
 	if data.Power > 0 {
 		p.Power = data.Power

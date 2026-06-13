@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"waveloggate/internal/adif"
+	"waveloggate/internal/config"
 	"waveloggate/internal/debug"
 	"waveloggate/internal/wavelog"
 )
@@ -21,17 +23,33 @@ type Server struct {
 	onStatus func(msg string)
 	conn     *net.UDPConn
 	sem      chan struct{}
+	cfgMu    sync.RWMutex
+	cfg      *config.Profile
 }
 
 // New creates a new UDP server.
-func New(port int, wlClient *wavelog.Client, onResult func(result *wavelog.QSOResult), onStatus func(msg string)) *Server {
+func New(port int, wlClient *wavelog.Client, cfg *config.Profile, onResult func(result *wavelog.QSOResult), onStatus func(msg string)) *Server {
 	return &Server{
 		port:     port,
 		wlClient: wlClient,
+		cfg:      cfg,
 		onResult: onResult,
 		onStatus: onStatus,
 		sem:      make(chan struct{}, maxConcurrentHandlers),
 	}
+}
+
+// UpdateConfig updates the profile used for satellite/transverter processing.
+func (s *Server) UpdateConfig(cfg *config.Profile) {
+	s.cfgMu.Lock()
+	defer s.cfgMu.Unlock()
+	s.cfg = cfg
+}
+
+func (s *Server) getConfig() *config.Profile {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg
 }
 
 // Start binds the UDP socket and begins receiving datagrams.
@@ -124,6 +142,9 @@ func (s *Server) handleDatagram(data string) {
 			}
 		}
 	}
+
+	// Apply satellite/transverter frequency offsets and inject SAT ADIF fields.
+	adif.ApplySatellite(fields, s.getConfig())
 
 	adifStr := adif.MapToADIF(fields)
 	debug.Log("[UDP] final ADIF: %s", adifStr)

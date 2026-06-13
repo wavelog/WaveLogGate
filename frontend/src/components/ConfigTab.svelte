@@ -9,6 +9,7 @@
   import WavelogSection from "./config/WavelogSection.svelte";
   import RadioSection from "./config/RadioSection.svelte";
   import RotatorSection from "./config/RotatorSection.svelte";
+  import SatelliteSection from "./config/SatelliteSection.svelte";
   import ProfileModal from "./config/ProfileModal.svelte";
   import AdvancedModal from "./config/AdvancedModal.svelte";
 
@@ -80,6 +81,7 @@
     : "none";
 
   $: rotatorEnabled = cfg?.profiles?.[cfg.profile]?.rotator_enabled ?? false;
+  $: satEnabled = cfg?.profiles?.[cfg.profile]?.sat_enabled ?? false;
 
   function setRadioType(type) {
     setProfileField("flrig_ena",     type === "flrig");
@@ -124,6 +126,11 @@
       <RotatorSection
         profile={activeProfile()}
         {rotatorEnabled}
+        on:fieldchange={(e) => setProfileField(e.detail.key, e.detail.value)}
+      />
+      <SatelliteSection
+        profile={activeProfile()}
+        {satEnabled}
         on:fieldchange={(e) => setProfileField(e.detail.key, e.detail.value)}
       />
     {/key}

@@ -85,6 +85,14 @@ func (p *Poller) SetFreqMode(hz int64, mode string) error {
 		return fmt.Errorf("no radio client configured")
 	}
 
+	// Reverse satellite offset: the incoming frequency is the displayed
+	// (offset-corrected) value. Subtract the offset so the radio receives
+	// the IF frequency.
+	if cfg.SatEnabled && cfg.SatRxOffsetMHz != 0 {
+		hz = ReverseSatOffset(hz, cfg.SatRxOffsetMHz)
+		debug.Log("[QSY] sat reverse RX offset → %d Hz", hz)
+	}
+
 	modes, _ := client.GetModes()
 	debug.Log("[QSY] requested mode=%q freq=%d available=%v", mode, hz, modes)
 
@@ -104,11 +112,19 @@ func (p *Poller) SetFreqMode(hz int64, mode string) error {
 func (p *Poller) SetTxFreq(hz int64) error {
 	p.mu.Lock()
 	client := p.client
+	cfg := p.cfg
 	p.mu.Unlock()
 
 	if client == nil {
 		return fmt.Errorf("no radio client configured")
 	}
+
+	// Reverse satellite offset for TX frequency.
+	if cfg.SatEnabled && cfg.SatTxOffsetMHz != 0 {
+		hz = ReverseSatOffset(hz, cfg.SatTxOffsetMHz)
+		debug.Log("[QSY] sat reverse TX offset → %d Hz", hz)
+	}
+
 	return client.SetTxFreq(hz)
 }
 
@@ -131,6 +147,9 @@ func (p *Poller) poll() {
 	if cfg.IgnorePwr {
 		status.Power = 0
 	}
+
+	// Apply satellite/transverter frequency offsets.
+	ApplySatOffsets(&status, cfg)
 
 	p.mu.Lock()
 	changed := !statusEqual(status, p.lastStatus)
@@ -155,6 +174,11 @@ func (p *Poller) poll() {
 			if status.Split {
 				data.FrequencyRx = int64(math.Round(status.FreqB))
 				data.ModeRx = status.ModeB
+			}
+			if cfg.SatEnabled {
+				data.PropMode = "SAT"
+				data.SatName = cfg.SatName
+				data.SatMode = cfg.SatMode
 			}
 			_ = p.wlClient.UpdateRadioStatus(data)
 		}

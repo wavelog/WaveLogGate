@@ -286,13 +286,18 @@ func (a *App) applyProfile(profile config.Profile) {
 	a.poller.UpdateConfig(&profile)
 	a.rotator.UpdateProfile(profile)
 	a.startManagedHamlib(profile)
+	if a.udpSrv != nil {
+		a.udpSrv.UpdateConfig(&profile)
+	}
 }
 
 // startUDPServer creates and starts the UDP server, storing it in a.udpSrv.
 func (a *App) startUDPServer(port int) error {
+	profile := a.cfg.ActiveProfile()
 	a.udpSrv = udp.New(
 		port,
 		a.wlClient,
+		&profile,
 		func(result *wavelog.QSOResult) {
 			wailsruntime.EventsEmit(a.ctx, "qso:result", result)
 		},

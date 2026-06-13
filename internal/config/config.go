@@ -32,6 +32,13 @@ type Profile struct {
 	RotatorParkAz      float64 `json:"rotator_park_az"`
 	RotatorParkEl      float64 `json:"rotator_park_el"`
 
+	// Satellite / Transverter settings.
+	SatEnabled     bool    `json:"sat_enabled"`
+	SatTxOffsetMHz float64 `json:"sat_tx_offset_mhz"` // MHz added to TX frequency
+	SatRxOffsetMHz float64 `json:"sat_rx_offset_mhz"` // MHz added to RX frequency
+	SatName        string  `json:"sat_name"`           // ADIF SAT_NAME (e.g., "QO-100")
+	SatMode        string  `json:"sat_mode"`            // ADIF SAT_MODE (e.g., "S/X")
+
 	// Managed rigctld settings (WaveLogGate launches/manages rigctld).
 	HamlibManaged   bool   `json:"hamlib_managed"`
 	HamlibModel     int    `json:"hamlib_model"`
@@ -81,7 +88,7 @@ func defaultProfile() Profile {
 
 func Default() Config {
 	return Config{
-		Version:        6,
+		Version:        7,
 		Profile:        0,
 		ProfileNames:   []string{"Profile 1", "Profile 2"},
 		UDPEnabled:     true,
@@ -142,7 +149,7 @@ func Save(cfg Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// migrate ensures the config matches version 4 schema.
+// migrate ensures the config matches version 7 schema.
 func migrate(cfg Config) Config {
 	// Ensure at least 2 profiles exist.
 	for len(cfg.Profiles) < 2 {
@@ -176,6 +183,10 @@ func migrate(cfg Config) Config {
 		if cfg.UDPEmitHost == "" {
 			cfg.UDPEmitHost = "127.0.0.1"
 		}
+	}
+	if cfg.Version < 7 {
+		cfg.Version = 7
+		// Satellite/transverter fields default to zero values (disabled).
 	}
 	return cfg
 }
