@@ -49,9 +49,6 @@ func NewFLRig(host, port string) *FLRigClient {
 	} else if !strings.HasPrefix(pathPart, "/") {
 		pathPart = "/" + pathPart
 	}
-	if !strings.HasSuffix(pathPart, "/") {
-		pathPart += "/"
-	}
 	return &FLRigClient{
 		baseURL: fmt.Sprintf("http://%s:%s%s", hostPart, port, pathPart),
 		httpClient: &http.Client{
