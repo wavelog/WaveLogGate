@@ -13,6 +13,8 @@ depends=(
     'webkit2gtk-4.1'
     'hamlib'
 )
+provides=('waveloggate')
+conflicts=('waveloggate' 'waveloggate-bin')
 url="https://github.com/wavelog/WaveLogGate"
 license=('MIT')
 # graphic license: MIT
