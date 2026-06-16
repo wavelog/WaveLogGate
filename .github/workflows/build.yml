@@ -225,3 +225,41 @@ jobs:
             artifacts/WavelogGate-windows-arm64/WavelogGate-windows-arm64.exe
             artifacts/WavelogGate-linux-amd64-webkit4.0/*.deb
             artifacts/WavelogGate-linux-amd64-webkit4.1/*.deb
+
+  aur:
+    needs: release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Update pkgver
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" aur/waveloggate-git/PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" aur/waveloggate-bin/PKGBUILD
+
+      - name: Publish waveloggate-git to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: waveloggate-git
+          pkgbuild: aur/waveloggate-git/PKGBUILD
+          commit_username: ${{ github.actor }}
+          commit_email: fabian.berg@hb9hil.org
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: Update to v${{ env.VERSION }}
+          updpkgsums: true
+
+      - name: Publish waveloggate-bin to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: waveloggate-bin
+          pkgbuild: aur/waveloggate-bin/PKGBUILD
+          commit_username: ${{ github.actor }}
+          commit_email: fabian.berg@hb9hil.org
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: Update to v${{ env.VERSION }}
+          updpkgsums: true
