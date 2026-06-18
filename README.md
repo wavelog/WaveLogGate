@@ -302,6 +302,43 @@ xattr -d com.apple.quarantine /Applications/WavelogGate.app
 
 ---
 
+## Packages
+
+### Arch Linux / CachyOS
+
+A PKGBUILD is provided in [`build/arch/`](build/arch/). It builds from source and targets systems with `webkit2gtk-4.1` (current Arch / CachyOS). All build dependencies (`go`, `bun`) are available in the official repos.
+
+**Build and install:**
+
+```bash
+cd build/arch
+makepkg -si
+```
+
+This downloads the source tarball, installs the Wails CLI via `go install`, builds the binary, and installs:
+- `/usr/bin/wavelog-gate`
+- `/usr/share/applications/wavelog-gate.desktop` (menu entry)
+- `/usr/share/icons/hicolor/256x256/apps/wavelog-gate.png`
+
+Pre-built `.pkg.tar.zst` packages for `x86_64` are also attached to each [GitHub release](https://github.com/wavelog/WaveLogGate/releases). GitHub wraps the download in a `.zip` — unzip it first, then install:
+
+```bash
+unzip wavelog-gate-arch.zip
+sudo pacman -U wavelog-gate-*.pkg.tar.zst
+```
+
+### Debian / Ubuntu
+
+Pre-built `.deb` packages for `amd64` are attached to each [GitHub release](https://github.com/wavelog/WaveLogGate/releases) in two variants:
+- `webkit4.0` — for Ubuntu 22.04 and older Debian-based systems
+- `webkit4.1` — for Ubuntu 24.04 and newer
+
+```bash
+sudo dpkg -i wavelog-gate_<version>_webkit4.1_amd64.deb
+```
+
+---
+
 ## Building from Source
 
 ### Prerequisites

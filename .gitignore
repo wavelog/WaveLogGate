@@ -1,4 +1,8 @@
 # Build output
+build/arch/pkg/
+build/arch/src/
+build/arch/wavelog-gate-*.pkg.tar.zst
+build/arch/wavelog-gate-*.tar.gz
 build/bin/
 frontend/dist/
 frontend/node_modules/

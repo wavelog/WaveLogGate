@@ -1,0 +1,52 @@
+# Maintainer: Joerg <joerg@dj7nt.de>
+pkgname=wavelog-gate
+pkgver=2.0.5
+pkgrel=1
+pkgdesc="Amateur radio gateway connecting WSJT-X/FLDigi and FLRig/Hamlib to Wavelog"
+arch=('x86_64')
+url="https://github.com/wavelog/WaveLogGate"
+license=('custom')
+depends=('webkit2gtk-4.1' 'gtk3')
+makedepends=('go>=1.23' 'bun')
+source=("$pkgname-$pkgver.tar.gz::https://codeload.github.com/wavelog/WaveLogGate/legacy.tar.gz/refs/tags/v$pkgver")
+sha256sums=('60651917e45df5cc8113e1372e1dce17259d8884a0341affd12586b6da1b5025')
+
+prepare() {
+    cd "wavelog-WaveLogGate-"*/
+    export GOPATH="$srcdir/gopath"
+    export GOMODCACHE="$GOPATH/pkg/mod"
+    go install "github.com/wailsapp/wails/v2/cmd/wails@v2.12.0"
+    go mod download
+}
+
+build() {
+    cd "wavelog-WaveLogGate-"*/
+    export GOPATH="$srcdir/gopath"
+    export GOMODCACHE="$GOPATH/pkg/mod"
+    export PATH="$GOPATH/bin:$PATH"
+    export CGO_CPPFLAGS="${CPPFLAGS}"
+    export CGO_CFLAGS="${CFLAGS}"
+    export CGO_CXXFLAGS="${CXXFLAGS}"
+    export CGO_LDFLAGS="${LDFLAGS}"
+    wails build -clean -tags webkit2_41 \
+        -ldflags "-X main.appVersion=v$pkgver" \
+        -trimpath
+}
+
+package() {
+    cd "wavelog-WaveLogGate-"*/
+    install -Dm755 build/bin/WavelogGate "$pkgdir/usr/bin/wavelog-gate"
+    install -Dm644 build/appicon.png \
+        "$pkgdir/usr/share/icons/hicolor/256x256/apps/wavelog-gate.png"
+    printf '%s\n' \
+        '[Desktop Entry]' \
+        'Name=WavelogGate' \
+        'Comment=Amateur radio gateway to Wavelog' \
+        'Exec=/usr/bin/wavelog-gate' \
+        'Icon=wavelog-gate' \
+        'Type=Application' \
+        'Categories=HamRadio;Network;' \
+        'StartupNotify=true' \
+        | install -Dm644 /dev/stdin \
+            "$pkgdir/usr/share/applications/wavelog-gate.desktop"
+}

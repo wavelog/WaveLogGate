@@ -1,0 +1,15 @@
+pkgbase = wavelog-gate
+	pkgdesc = Amateur radio gateway connecting WSJT-X/FLDigi and FLRig/Hamlib to Wavelog
+	pkgver = 2.0.5
+	pkgrel = 1
+	url = https://github.com/wavelog/WaveLogGate
+	arch = x86_64
+	license = custom
+	makedepends = go>=1.23
+	makedepends = bun
+	depends = webkit2gtk-4.1
+	depends = gtk3
+	source = wavelog-gate-2.0.5.tar.gz::https://codeload.github.com/wavelog/WaveLogGate/legacy.tar.gz/refs/tags/v2.0.5
+	sha256sums = 60651917e45df5cc8113e1372e1dce17259d8884a0341affd12586b6da1b5025
+
+pkgname = wavelog-gate
