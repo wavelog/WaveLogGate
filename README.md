@@ -345,3 +345,16 @@ Example:
 ```bash
 wails build -clean -platform darwin/arm64
 ```
+
+---
+
+## Contributing
+
+New contributors should base their work on the **`master` branch**, which tracks ongoing development. 
+
+```bash
+git clone https://github.com/wavelog/WaveLogGate.git
+cd WaveLogGate
+```
+
+Before starting on a feature or fix, check the open pull requests and issues to see what is currently being worked on and avoid duplicating effort.
