@@ -1,21 +1,9 @@
-name: Build
+name: Release Build
 
 on:
   push:
-    branches:
-      - master
     tags:
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version (e.g. 1.2.3) — used for the .deb package name'
-        required: false
-        default: '0.0.0-dev'
-      create_release:
-        description: 'Create a GitHub release from this run'
-        type: boolean
-        default: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -84,11 +72,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.version }}" && "${{ inputs.version }}" != "0.0.0-dev" ]]; then
-            VERSION="v${{ inputs.version }}"
-          else
-            VERSION=$(git describe --tags --always 2>/dev/null || echo "vdev")
-          fi
+          VERSION="${{ github.ref_name }}"
           wails build -clean -platform ${{ matrix.platform }} ${{ matrix.webkit_tags }} -ldflags "-X main.appVersion=${VERSION}"
 
       - name: Sign (macOS)
@@ -149,14 +133,10 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ inputs.version }}"
-          else
-            REF="${{ github.ref_name }}"
-            VERSION="${REF#v}"
-            if [[ ! "$VERSION" =~ ^[0-9] ]]; then
-              VERSION="0.0.0"
-            fi
+          REF="${{ github.ref_name }}"
+          VERSION="${REF#v}"
+          if [[ ! "$VERSION" =~ ^[0-9] ]]; then
+            VERSION="0.0.0"
           fi
           WK="${{ matrix.artifact == 'WavelogGate-linux-amd64-webkit4.1' && 'webkit4.1' || 'webkit4.0' }}"
           PKG="wavelog-gate_${VERSION}_${WK}_amd64"
@@ -227,7 +207,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
 
@@ -240,7 +220,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
+          tag_name: ${{ github.ref_name }}
           files: |
             artifacts/WavelogGate-darwin-arm64/*.dmg
             artifacts/WavelogGate-darwin-amd64/*.dmg
