@@ -6,6 +6,64 @@ Built with Go + [Wails v2](https://wails.io) + Svelte. Ships as a single self-co
 
 ---
 
+## Installation
+
+Pre-built packages are published with every [GitHub release](https://github.com/wavelog/WaveLogGate/releases).
+
+### Linux
+
+| Distribution | Package | WebKit variant |
+|---|---|---|
+| Debian / Ubuntu | `.deb` | `webkit4.0` (Ubuntu 22.04) or `webkit4.1` (Ubuntu 24.04+) |
+| Fedora / RHEL / openSUSE | `.rpm` | `webkit4.0` or `webkit4.1` |
+
+Download the package matching your system's WebKit version and install it with your package manager:
+
+#### Debian / Ubuntu
+
+```bash
+sudo dpkg -i wavelog-gate_<version>_webkit4.1_amd64.deb
+```
+
+#### Fedora / RHEL
+
+```bash
+sudo dnf install wavelog-gate-<version>-webkit4.1.x86_64.rpm
+```
+
+#### openSUSE
+
+```bash
+sudo zypper install wavelog-gate-<version>-webkit4.1.x86_64.rpm
+```
+
+#### Arch Linux (AUR)
+
+Two AUR packages are available and automatically updated on every release:
+
+| Package | Description |
+|---|---|
+| [`waveloggate-bin`](https://aur.archlinux.org/packages/waveloggate-bin) | Installs the pre-built binary from the GitHub release |
+| [`waveloggate-git`](https://aur.archlinux.org/packages/waveloggate-git) | Builds from source using the latest tagged release |
+
+Install with your AUR helper of choice, for example:
+
+```bash
+yay -S waveloggate-bin
+# or
+yay -S waveloggate-git
+```
+
+### macOS
+
+Download the `.dmg` for your architecture (`arm64` for Apple Silicon, `amd64` for Intel) and drag the app to `/Applications`.
+
+### Windows
+
+Download the `.exe` for your architecture and run it directly — no installer required.
+
+---
+
 ## User Manual
 
 ### Network ports
@@ -295,11 +353,6 @@ Each datagram contains the ADIF string for the QSO which was logged within Wavel
 
 **No QSOs appearing** — in WSJT-X, make sure you're using the **Secondary** UDP server, not the primary one.
 
-**macOS quarantine (Apple Silicon)** — if the app is blocked after download, run:
-```bash
-xattr -d com.apple.quarantine /Applications/WavelogGate.app
-```
-
 ---
 
 ## Building from Source
@@ -350,7 +403,7 @@ wails build -clean -platform darwin/arm64
 
 ## Contributing
 
-New contributors should base their work on the **`master` branch**, which tracks ongoing development. 
+New contributors should base their work on the **`master` branch**, which tracks ongoing development.
 
 ```bash
 git clone https://github.com/wavelog/WaveLogGate.git
