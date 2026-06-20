@@ -104,11 +104,35 @@ jobs:
       - name: Package (macOS — create DMG)
         if: runner.os == 'macOS'
         run: |
-          hdiutil create \
-            -volname "WavelogGate" \
-            -srcfolder build/bin/WavelogGate.app \
-            -ov -format UDZO \
-            ${{ matrix.artifact }}.dmg
+          brew install create-dmg
+
+          ICONSET="$(mktemp -d)/volicon.iconset"
+          mkdir -p "$ICONSET"
+          for s in 16 32 128 256 512; do
+            sips -z "$s" "$s" build/appicon.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+            d=$((s * 2))
+            sips -z "$d" "$d" build/appicon.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$ICONSET" -o volicon.icns
+
+          # create-dmg builds a styled DMG with the /Applications symlink, icon
+          # positions and our background (restores the layout we had pre-2.0).
+          # It occasionally returns a non-zero status even on success (e.g. when
+          # it cannot toggle internet-enable), so verify the output file instead.
+          create-dmg \
+            --volname "WavelogGate" \
+            --volicon volicon.icns \
+            --background build/darwin/dmg-background.png \
+            --window-pos 200 120 \
+            --window-size 660 400 \
+            --icon-size 128 \
+            --icon "WavelogGate.app" 165 205 \
+            --app-drop-link 495 205 \
+            --no-internet-enable \
+            "${{ matrix.artifact }}.dmg" \
+            "build/bin/WavelogGate.app" || true
+
+          test -f "${{ matrix.artifact }}.dmg"
 
       - name: Notarize (macOS)
         if: runner.os == 'macOS'
