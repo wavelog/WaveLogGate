@@ -106,12 +106,22 @@ jobs:
         run: |
           brew install create-dmg
 
+          ICONSET="$(mktemp -d)/volicon.iconset"
+          mkdir -p "$ICONSET"
+          for s in 16 32 128 256 512; do
+            sips -z "$s" "$s" build/appicon.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+            d=$((s * 2))
+            sips -z "$d" "$d" build/appicon.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$ICONSET" -o volicon.icns
+
           # create-dmg builds a styled DMG with the /Applications symlink, icon
           # positions and our background (restores the layout we had pre-2.0).
           # It occasionally returns a non-zero status even on success (e.g. when
           # it cannot toggle internet-enable), so verify the output file instead.
           create-dmg \
             --volname "WavelogGate" \
+            --volicon volicon.icns \
             --background build/darwin/dmg-background.png \
             --window-pos 200 120 \
             --window-size 660 400 \
@@ -221,7 +231,6 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
 
