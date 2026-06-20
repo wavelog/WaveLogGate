@@ -12,3 +12,6 @@ WavelogGate
 
 # macOS
 .DS_Store
+
+# other build artifacts
+*.dmg
