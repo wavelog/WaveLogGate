@@ -34,11 +34,33 @@ jobs:
             artifact: WavelogGate-linux-amd64-webkit4.0
             webkit_pkg: libwebkit2gtk-4.0-dev
             webkit_tags: ''
+            webkit_label: webkit4.0
+            deb_arch: amd64
+            rpm_arch: x86_64
           - os: ubuntu-24.04
             platform: linux/amd64
             artifact: WavelogGate-linux-amd64-webkit4.1
             webkit_pkg: libwebkit2gtk-4.1-dev
             webkit_tags: '-tags webkit2_41'
+            webkit_label: webkit4.1
+            deb_arch: amd64
+            rpm_arch: x86_64
+          - os: ubuntu-22.04-arm
+            platform: linux/arm64
+            artifact: WavelogGate-linux-arm64-webkit4.0
+            webkit_pkg: libwebkit2gtk-4.0-dev
+            webkit_tags: ''
+            webkit_label: webkit4.0
+            deb_arch: arm64
+            rpm_arch: aarch64
+          - os: ubuntu-24.04-arm
+            platform: linux/arm64
+            artifact: WavelogGate-linux-arm64-webkit4.1
+            webkit_pkg: libwebkit2gtk-4.1-dev
+            webkit_tags: '-tags webkit2_41'
+            webkit_label: webkit4.1
+            deb_arch: arm64
+            rpm_arch: aarch64
 
     runs-on: ${{ matrix.os }}
 
@@ -162,8 +184,10 @@ jobs:
           if [[ ! "$VERSION" =~ ^[0-9] ]]; then
             VERSION="0.0.0"
           fi
-          WK="${{ matrix.artifact == 'WavelogGate-linux-amd64-webkit4.1' && 'webkit4.1' || 'webkit4.0' }}"
-          PKG="wavelog-gate_${VERSION}_${WK}_amd64"
+          WK="${{ matrix.webkit_label }}"
+          DEB_ARCH="${{ matrix.deb_arch }}"
+          RPM_ARCH="${{ matrix.rpm_arch }}"
+          PKG="wavelog-gate_${VERSION}_${WK}_${DEB_ARCH}"
           mkdir -p "${PKG}/DEBIAN"
           mkdir -p "${PKG}/usr/local/bin"
           mkdir -p "${PKG}/usr/share/applications"
@@ -182,8 +206,8 @@ jobs:
             'Categories=HamRadio;Network;' \
             > "${PKG}/usr/share/applications/wavelog-gate.desktop"
 
-          printf 'Package: wavelog-gate\nVersion: %s\nArchitecture: amd64\nMaintainer: Joerg <joerg@dj7nt.de>\nHomepage: https://github.com/wavelog/WaveLogGate\nDescription: WavelogGate\n Connects WSJT-X/FLDigi and FLRig/Hamlib to Wavelog web logging platform.\n' \
-            "${VERSION}" > "${PKG}/DEBIAN/control"
+          printf 'Package: wavelog-gate\nVersion: %s\nArchitecture: %s\nMaintainer: Joerg <joerg@dj7nt.de>\nHomepage: https://github.com/wavelog/WaveLogGate\nDescription: WavelogGate\n Connects WSJT-X/FLDigi and FLRig/Hamlib to Wavelog web logging platform.\n' \
+            "${VERSION}" "${DEB_ARCH}" > "${PKG}/DEBIAN/control"
 
           dpkg-deb --build "${PKG}"
 
@@ -192,13 +216,13 @@ jobs:
             -n wavelog-gate \
             -v "${VERSION}" \
             --iteration "${WK}" \
-            -a x86_64 \
+            -a "${RPM_ARCH}" \
             -m "Joerg <joerg@dj7nt.de>" \
             --vendor "Joerg <joerg@dj7nt.de>" \
             --license "MIT" \
             --url "https://github.com/wavelog/WaveLogGate" \
             --description "Connects WSJT-X/FLDigi and FLRig/Hamlib to Wavelog web logging platform." \
-            -p "wavelog-gate-${VERSION}-${WK}.x86_64.rpm" \
+            -p "wavelog-gate-${VERSION}-${WK}.${RPM_ARCH}.rpm" \
             -C "${PKG}" \
             usr
 
@@ -255,6 +279,10 @@ jobs:
             artifacts/WavelogGate-linux-amd64-webkit4.1/*.deb
             artifacts/WavelogGate-linux-amd64-webkit4.0/*.rpm
             artifacts/WavelogGate-linux-amd64-webkit4.1/*.rpm
+            artifacts/WavelogGate-linux-arm64-webkit4.0/*.deb
+            artifacts/WavelogGate-linux-arm64-webkit4.1/*.deb
+            artifacts/WavelogGate-linux-arm64-webkit4.0/*.rpm
+            artifacts/WavelogGate-linux-arm64-webkit4.1/*.rpm
 
   aur:
     needs: release
