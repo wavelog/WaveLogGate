@@ -27,6 +27,19 @@ type QSOResult struct {
 	Reason  string `json:"reason"`
 }
 
+// Reason values classifying SendQSO outcomes. Single source of truth — callers
+// that gate retry/buffering on a reason must use IsTransient, not string literals.
+const (
+	ReasonInternet    = "internet problem"
+	ReasonTimeout     = "timeout"
+	ReasonServerError = "server error"
+)
+
+// IsTransient reports whether a SendQSO reason is worth retrying later.
+func IsTransient(reason string) bool {
+	return reason == ReasonInternet || reason == ReasonTimeout || reason == ReasonServerError
+}
+
 // RadioData holds the data sent to Wavelog's /api/radio endpoint.
 type RadioData struct {
 	Frequency   int64
@@ -126,7 +139,7 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("internet problem")
+		return nil, fmt.Errorf(ReasonInternet)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
@@ -135,15 +148,21 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	if err != nil {
 		debug.Log("[WL] HTTP error: %v", err)
 		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline") {
-			return &QSOResult{Success: false, Reason: "timeout"}, nil
+			return &QSOResult{Success: false, Reason: ReasonTimeout}, nil
 		}
-		return &QSOResult{Success: false, Reason: "internet problem"}, nil
+		return &QSOResult{Success: false, Reason: ReasonInternet}, nil
 	}
 	defer resp.Body.Close()
 
 	data, _ := io.ReadAll(resp.Body)
 	bodyStr := string(data)
 	debug.Log("[WL] HTTP %d  response: %s", resp.StatusCode, bodyStr)
+
+	// 5xx server errors are transient — retry later via the queue.
+	if resp.StatusCode >= 500 {
+		debug.Log("[WL] server error %d — treating as transient", resp.StatusCode)
+		return &QSOResult{Success: false, Reason: ReasonServerError}, nil
+	}
 
 	// Detect HTML response (wrong URL).
 	if strings.Contains(bodyStr, "<html") || strings.Contains(bodyStr, "<!DOCTYPE") {

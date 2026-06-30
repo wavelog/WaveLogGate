@@ -24,6 +24,7 @@
   export let satEl = null;
   export let demandedAz = null;
   export let demandedEl = null;
+  export let queuePending = 0;
 </script>
 
 <div class="py-2.5 px-3 flex flex-col gap-2">
@@ -45,6 +46,24 @@
           </div>
         {/if}
       {/if}
+    </div>
+  {/if}
+
+  {#if queuePending > 0}
+    <div class="px-1 flex items-center gap-2">
+      <div class="alert alert-danger flex-1 font-mono text-2xs">
+        ⏳ {queuePending} QSO{queuePending === 1 ? "" : "s"} queued — will retry every 30s
+      </div>
+      <button
+        class="text-2xs py-1 px-2 rounded-md border border-stroke-base text-fg-bright hover:bg-surface-input transition-colors duration-150"
+        title="Retry sending queued QSOs now"
+        on:click={() => dispatch("retry")}
+      >Retry now</button>
+      <button
+        class="text-2xs py-1 px-2 rounded-md border border-stroke-base text-fg-bright hover:bg-surface-input transition-colors duration-150"
+        title="Drop all buffered QSOs (cannot be undone)"
+        on:click={() => dispatch("flush")}
+      >Flush</button>
     </div>
   {/if}
 

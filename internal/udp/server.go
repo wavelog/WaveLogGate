@@ -9,6 +9,7 @@ import (
 	"waveloggate/internal/adif"
 	"waveloggate/internal/config"
 	"waveloggate/internal/debug"
+	"waveloggate/internal/queue"
 	"waveloggate/internal/wavelog"
 )
 
@@ -19,6 +20,7 @@ const maxConcurrentHandlers = 16
 type Server struct {
 	port     int
 	wlClient *wavelog.Client
+	queue    *queue.Queue
 	onResult func(result *wavelog.QSOResult)
 	onStatus func(msg string)
 	conn     *net.UDPConn
@@ -27,11 +29,12 @@ type Server struct {
 	cfg      *config.Profile
 }
 
-// New creates a new UDP server.
-func New(port int, wlClient *wavelog.Client, cfg *config.Profile, onResult func(result *wavelog.QSOResult), onStatus func(msg string)) *Server {
+// New creates a new UDP server. queue may be nil to disable buffering.
+func New(port int, wlClient *wavelog.Client, q *queue.Queue, cfg *config.Profile, onResult func(result *wavelog.QSOResult), onStatus func(msg string)) *Server {
 	return &Server{
 		port:     port,
 		wlClient: wlClient,
+		queue:    q,
 		cfg:      cfg,
 		onResult: onResult,
 		onStatus: onStatus,
@@ -156,11 +159,16 @@ func (s *Server) handleDatagram(data string) {
 	result, err := s.wlClient.SendQSO(adifStr, false)
 	if err != nil {
 		debug.Log("[UDP] SendQSO error: %v", err)
-		result = &wavelog.QSOResult{Success: false, Reason: err.Error()}
+		result = &wavelog.QSOResult{Success: false, Reason: wavelog.ReasonInternet}
 	}
 
 	debug.Log("[UDP] QSO result: success=%v call=%s band=%s mode=%s reason=%s",
 		result.Success, result.Call, result.Band, result.Mode, result.Reason)
+
+	// Buffer transient failures for later retry; permanent errors surface as before.
+	if !result.Success && wavelog.IsTransient(result.Reason) && s.queue != nil {
+		s.queue.Push(adifStr)
+	}
 
 	if s.onResult != nil {
 		s.onResult(result)

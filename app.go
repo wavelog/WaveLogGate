@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -16,6 +19,7 @@ import (
 	"waveloggate/internal/debug"
 	"waveloggate/internal/hamlib"
 	"waveloggate/internal/qsy"
+	"waveloggate/internal/queue"
 	"waveloggate/internal/radio"
 	"waveloggate/internal/rotator"
 	"waveloggate/internal/startmenu"
@@ -38,6 +42,7 @@ type App struct {
 	wlClient  *wavelog.Client
 	rotator   *rotator.Client
 	hamlibMgr *hamlib.Manager
+	queue     *queue.Queue
 
 	// hamlibStartMu serialises stop+start sequences so that rapid profile
 	// switches (SaveConfig, SwitchProfile) cannot interleave and leave a
@@ -69,6 +74,27 @@ func (a *App) startup(ctx context.Context) {
 
 	// Wavelog client.
 	a.wlClient = wavelog.New(&profile, appVersion)
+
+	// QSO retry queue — buffers ADIF strings that failed transient submission
+	// (net down) and retries them later. Persists across restarts.
+	queuePath, err := queueFilePath()
+	if err != nil {
+		debug.Log("[QUEUE] cannot resolve queue path: %v", err)
+	}
+	a.queue = queue.New(queuePath, a.wlClient,
+		func(r *wavelog.QSOResult) {
+			if a.ctx != nil {
+				wailsruntime.EventsEmit(a.ctx, "qso:result", r)
+			}
+		},
+		func(n int) {
+			if a.ctx != nil {
+				wailsruntime.EventsEmit(a.ctx, "queue:pending", n)
+			}
+		},
+	)
+	a.queue.Load()
+	go a.queue.Run(ctx, 30*time.Second)
 
 	// WebSocket hub.
 	a.wsHub = ws.NewHub()
@@ -297,6 +323,7 @@ func (a *App) startUDPServer(port int) error {
 	a.udpSrv = udp.New(
 		port,
 		a.wlClient,
+		a.queue,
 		&profile,
 		func(result *wavelog.QSOResult) {
 			wailsruntime.EventsEmit(a.ctx, "qso:result", result)
@@ -306,6 +333,15 @@ func (a *App) startUDPServer(port int) error {
 		},
 	)
 	return a.udpSrv.Start()
+}
+
+// queueFilePath returns the on-disk path for the persistent QSO queue.
+func queueFilePath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "WavelogGate", "queue.jsonl"), nil
 }
 
 // emitHamlibError emits a hamlib:status error event to the frontend.
@@ -464,6 +500,30 @@ func (a *App) GetUDPStatus() UDPStatus {
 		EmitEnabled:    a.cfg.UDPEmitEnabled,
 		EmitPort:       a.cfg.UDPEmitPort,
 		EmitHost:       a.cfg.UDPEmitHost,
+	}
+}
+
+// GetQueuePending returns the number of QSOs currently buffered awaiting retry.
+func (a *App) GetQueuePending() int {
+	if a.queue == nil {
+		return 0
+	}
+	return a.queue.Pending()
+}
+
+// RetryNow triggers an immediate drain attempt of the QSO retry queue.
+// Non-blocking; if a drain is already in flight it is a no-op.
+func (a *App) RetryNow() {
+	if a.queue != nil {
+		a.queue.Wake()
+	}
+}
+
+// FlushQueue drops all buffered QSOs and removes the queue file.
+// Lost QSOs cannot be recovered.
+func (a *App) FlushQueue() {
+	if a.queue != nil {
+		a.queue.Flush()
 	}
 }
 
