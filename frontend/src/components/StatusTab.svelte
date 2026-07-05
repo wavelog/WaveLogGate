@@ -25,6 +25,24 @@
   export let demandedAz = null;
   export let demandedEl = null;
   export let queuePending = 0;
+
+  // Two-step flush confirmation. window.confirm is unusable here: Wails'
+  // WKWebView on macOS has no JS-dialog delegate, so confirm() silently
+  // returns falsy and the button would never fire.
+  let flushArmed = false;
+  let flushArmTimer = null;
+
+  function handleFlushClick() {
+    if (!flushArmed) {
+      flushArmed = true;
+      clearTimeout(flushArmTimer);
+      flushArmTimer = setTimeout(() => { flushArmed = false; }, 4000);
+      return;
+    }
+    clearTimeout(flushArmTimer);
+    flushArmed = false;
+    dispatch("flush");
+  }
 </script>
 
 <div class="py-2.5 px-3 flex flex-col gap-2">
@@ -60,10 +78,12 @@
         on:click={() => dispatch("retry")}
       >Retry now</button>
       <button
-        class="text-2xs py-1 px-2 rounded-md border border-stroke-base text-fg-bright hover:bg-surface-input transition-colors duration-150"
+        class="text-2xs py-1 px-2 rounded-md border transition-colors duration-150 {flushArmed
+          ? 'border-red-500 text-red-400 hover:bg-red-500/10'
+          : 'border-stroke-base text-fg-bright hover:bg-surface-input'}"
         title="Drop all buffered QSOs (cannot be undone)"
-        on:click={() => dispatch("flush")}
-      >Flush</button>
+        on:click={handleFlushClick}
+      >{flushArmed ? "Sure?" : "Flush"}</button>
     </div>
   {/if}
 

@@ -17,6 +17,7 @@ import (
 // Queue is a disk-backed FIFO of ADIF strings awaiting submission to Wavelog.
 type Queue struct {
 	mu        sync.Mutex
+	persistMu sync.Mutex // serialises snapshot+write+rename in persist()
 	items     []string
 	path      string
 	client    *wavelog.Client
@@ -92,7 +93,9 @@ func (q *Queue) Flush() {
 	q.items = nil
 	q.mu.Unlock()
 
+	q.persistMu.Lock()
 	_ = os.Remove(q.path)
+	q.persistMu.Unlock()
 	q.notifyPending()
 	debug.Log("[QUEUE] flushed — all pending QSOs dropped")
 }
@@ -184,7 +187,14 @@ func (q *Queue) shiftHead(expected string) {
 }
 
 // persist rewrites the queue file atomically from the in-memory slice.
+// persistMu is held across snapshot+write+rename so that concurrent callers
+// (Push on UDP handler goroutines, shiftHead on the Run goroutine) cannot
+// interleave writes to the shared tmp file or rename an older snapshot over
+// a newer one. Never acquire persistMu while holding q.mu.
 func (q *Queue) persist() {
+	q.persistMu.Lock()
+	defer q.persistMu.Unlock()
+
 	q.mu.Lock()
 	snapshot := make([]string, len(q.items))
 	copy(snapshot, q.items)

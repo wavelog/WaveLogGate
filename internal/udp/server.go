@@ -158,6 +158,10 @@ func (s *Server) handleDatagram(data string) {
 
 	result, err := s.wlClient.SendQSO(adifStr, false)
 	if err != nil {
+		// Hard client errors (marshal / request build, e.g. malformed URL) are
+		// classified transient too: the QSO gets buffered and retried instead
+		// of being lost, and drains once the profile is fixed. The real error
+		// is only visible in the debug log.
 		debug.Log("[UDP] SendQSO error: %v", err)
 		result = &wavelog.QSOResult{Success: false, Reason: wavelog.ReasonInternet}
 	}

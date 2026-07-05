@@ -216,3 +216,54 @@ func TestQueueWakeTriggersImmediateDrain(t *testing.T) {
 	}
 	fmt.Println("server received", c, "requests via wake-triggered drain")
 }
+
+// TestQueueConcurrentPushDrainPersist: concurrent Push (many goroutines, like UDP
+// handlers) racing a draining Run loop must leave the on-disk file consistent —
+// after everything settles, a fresh Load must see exactly the undrained items.
+func TestQueueConcurrentPushDrainPersist(t *testing.T) {
+	var count int
+	var mu sync.Mutex
+	srv := httptest.NewServer(wavelogHandler("ok", &count, &mu))
+	defer srv.Close()
+
+	client := newClient(t, srv.URL)
+	path := tmpQueuePath(t)
+
+	q := New(path, client, nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	go q.Run(ctx, 50*time.Millisecond)
+
+	const pushers, perPusher = 8, 20
+	var wg sync.WaitGroup
+	for p := 0; p < pushers; p++ {
+		wg.Add(1)
+		go func(p int) {
+			defer wg.Done()
+			for i := 0; i < perPusher; i++ {
+				q.Push(fmt.Sprintf("<call:6>CONC%d%d <eor>", p, i))
+			}
+		}(p)
+	}
+	wg.Wait()
+
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		if q.Pending() == 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := q.Pending(); got != 0 {
+		t.Fatalf("queue should fully drain, has %d", got)
+	}
+	cancel()
+
+	// Disk must agree with memory: nothing pending → empty or absent file.
+	q2 := New(path, nil, nil, nil)
+	q2.Load()
+	if got := q2.Pending(); got != 0 {
+		t.Fatalf("on-disk queue inconsistent after concurrent push/drain: reload sees %d items", got)
+	}
+}

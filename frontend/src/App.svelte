@@ -104,9 +104,10 @@
     await RetryNow();
   }
 
+  // Confirmation is the two-step Flush→Sure? button in StatusTab; no native
+  // dialog (window.confirm is a silent no-op in WKWebView on macOS).
   async function flushQueue() {
     if (!queuePending) return;
-    if (!window.confirm(`Drop ${queuePending} buffered QSO${queuePending === 1 ? "" : "s"}? This cannot be undone.`)) return;
     await FlushQueue();
   }
 
