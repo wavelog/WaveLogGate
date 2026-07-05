@@ -162,6 +162,46 @@ func TestQueuePersistsAcrossRestart(t *testing.T) {
 	}
 }
 
+// TestQueuePersistsItemWithNewline: ADIF values are length-prefixed and may
+// contain newlines; the line-based file format must survive them intact.
+func TestQueuePersistsItemWithNewline(t *testing.T) {
+	path := tmpQueuePath(t)
+	item := "<call:5>MULTI <comment:11>line1\nline2 <eor>"
+
+	q1 := New(path, nil, nil, nil)
+	q1.Push(item)
+
+	q2 := New(path, nil, nil, nil)
+	q2.Load()
+
+	if got := q2.Pending(); got != 1 {
+		t.Fatalf("expected 1 item after reload, got %d", got)
+	}
+	if q2.items[0] != item {
+		t.Fatalf("item corrupted across restart:\nwant %q\ngot  %q", item, q2.items[0])
+	}
+}
+
+// TestQueueLoadsLegacyPlainLines: queue files written before JSON encoding
+// hold raw ADIF per line; Load must keep them verbatim.
+func TestQueueLoadsLegacyPlainLines(t *testing.T) {
+	path := tmpQueuePath(t)
+	legacy := "<call:6>LEGACY <band:3>20m <eor>"
+	if err := os.WriteFile(path, []byte(legacy+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	q := New(path, nil, nil, nil)
+	q.Load()
+
+	if got := q.Pending(); got != 1 {
+		t.Fatalf("expected 1 legacy item, got %d", got)
+	}
+	if q.items[0] != legacy {
+		t.Fatalf("legacy item mangled:\nwant %q\ngot  %q", legacy, q.items[0])
+	}
+}
+
 // TestQueueFlush: Flush clears items and removes the file.
 func TestQueueFlush(t *testing.T) {
 	path := tmpQueuePath(t)

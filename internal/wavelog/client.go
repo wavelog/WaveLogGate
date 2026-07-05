@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"waveloggate/internal/adif"
@@ -61,8 +62,10 @@ type Station struct {
 }
 
 // Client communicates with the Wavelog API.
+// cfg is an atomic pointer: UpdateProfile swaps it from the UI goroutine while
+// UDP handlers and the retry-queue goroutine read it concurrently.
 type Client struct {
-	cfg        *config.Profile
+	cfg        atomic.Pointer[config.Profile]
 	httpClient *http.Client
 	userAgent  string
 }
@@ -72,19 +75,20 @@ func New(cfg *config.Profile, appVersion string) *Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
 	}
-	return &Client{
-		cfg: cfg,
+	c := &Client{
 		httpClient: &http.Client{
 			Timeout:   5 * time.Second,
 			Transport: transport,
 		},
 		userAgent: "WavelogGate/" + appVersion,
 	}
+	c.cfg.Store(cfg)
+	return c
 }
 
 // UpdateProfile updates the config profile used by the client.
 func (c *Client) UpdateProfile(cfg *config.Profile) {
-	c.cfg = cfg
+	c.cfg.Store(cfg)
 }
 
 type qsoPayload struct {
@@ -116,7 +120,8 @@ func redactKey(key string) string {
 
 // SendQSO posts an ADIF string to Wavelog. dryRun uses /api/qso/true.
 func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
-	endpoint := strings.TrimRight(c.cfg.WavelogURL, "/") + "/api/qso"
+	cfg := c.cfg.Load()
+	endpoint := strings.TrimRight(cfg.WavelogURL, "/") + "/api/qso"
 	if dryRun {
 		endpoint += "/true"
 	}
@@ -126,8 +131,8 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	qsoInfo := adif.Parse(adifStr)
 
 	payload := qsoPayload{
-		Key:              c.cfg.WavelogKey,
-		StationProfileID: c.cfg.WavelogID,
+		Key:              cfg.WavelogKey,
+		StationProfileID: cfg.WavelogID,
 		Type:             "adif",
 		String:           adifStr,
 	}
@@ -135,7 +140,7 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	debug.Log("[WL] payload: %s", strings.Replace(string(body), c.cfg.WavelogKey, redactKey(c.cfg.WavelogKey), -1))
+	debug.Log("[WL] payload: %s", strings.Replace(string(body), cfg.WavelogKey, redactKey(cfg.WavelogKey), -1))
 
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -214,7 +219,8 @@ type radioPayload struct {
 
 // UpdateRadioStatus posts radio status to Wavelog's /api/radio.
 func (c *Client) UpdateRadioStatus(data RadioData) error {
-	endpoint := strings.TrimRight(c.cfg.WavelogURL, "/") + "/api/radio"
+	cfg := c.cfg.Load()
+	endpoint := strings.TrimRight(cfg.WavelogURL, "/") + "/api/radio"
 
 	freq := data.Frequency
 	freqRx := data.FrequencyRx
@@ -228,8 +234,8 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 	}
 
 	p := radioPayload{
-		Radio:       c.cfg.WavelogRadioname,
-		Key:         c.cfg.WavelogKey,
+		Radio:       cfg.WavelogRadioname,
+		Key:         cfg.WavelogKey,
 		Frequency:   freq,
 		Mode:        mode,
 		FrequencyRx: freqRx,
@@ -265,7 +271,8 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 
 // GetStations fetches the station profile list from Wavelog.
 func (c *Client) GetStations() ([]Station, error) {
-	endpoint := strings.TrimRight(c.cfg.WavelogURL, "/") + "/api/station_info/" + c.cfg.WavelogKey
+	cfg := c.cfg.Load()
+	endpoint := strings.TrimRight(cfg.WavelogURL, "/") + "/api/station_info/" + cfg.WavelogKey
 
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {

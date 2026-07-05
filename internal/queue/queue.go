@@ -5,6 +5,7 @@ package queue
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
@@ -49,17 +50,30 @@ func (q *Queue) Load() {
 	}
 
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 65536), 65536)
+	sc.Buffer(make([]byte, 0, 65536), 1024*1024)
 	for sc.Scan() {
 		line := sc.Text()
-		if line != "" {
+		if line == "" {
+			continue
+		}
+		// Items are JSON-encoded strings (newline-safe). Lines that don't
+		// parse are legacy plain-ADIF entries from the pre-JSON format —
+		// keep them verbatim.
+		var s string
+		if err := json.Unmarshal([]byte(line), &s); err == nil {
+			q.items = append(q.items, s)
+		} else {
 			q.items = append(q.items, line)
 		}
 	}
+	scanErr := sc.Err()
 	n := len(q.items)
 	q.mu.Unlock()
 
 	f.Close()
+	if scanErr != nil {
+		debug.Log("[QUEUE] load aborted early: %v — queue file may be truncated", scanErr)
+	}
 	debug.Log("[QUEUE] loaded %d pending QSOs from disk", n)
 	q.notifyPending()
 }
@@ -214,7 +228,14 @@ func (q *Queue) persist() {
 	}
 	w := bufio.NewWriter(f)
 	for _, s := range snapshot {
-		w.WriteString(s)
+		// JSON-encode each item: ADIF values are length-prefixed and may
+		// legally contain newlines, which would break the line-based format.
+		enc, err := json.Marshal(s)
+		if err != nil {
+			debug.Log("[QUEUE] persist marshal error: %v", err)
+			continue
+		}
+		w.Write(enc)
 		w.WriteByte('\n')
 	}
 	if err := w.Flush(); err != nil {
