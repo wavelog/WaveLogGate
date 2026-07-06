@@ -6,6 +6,7 @@
 
   let advUdpEnabled = true;
   let advUdpPort = 2333;
+  let advNotifyEnabled = false;
   let advMinimapEnabled = false;
   let advEmitEnabled = false;
   let advEmitPort = 2334;
@@ -18,6 +19,7 @@
     const status = await GetUDPStatus();
     advUdpEnabled = status.enabled;
     advUdpPort = status.port;
+    advNotifyEnabled = status.notifyEnabled;
     advMinimapEnabled = status.minimapEnabled;
     advEmitEnabled = status.emitEnabled;
     advEmitPort = status.emitPort;
@@ -26,7 +28,7 @@
 
   async function save() {
     try {
-      await SaveAdvanced(advUdpEnabled, advUdpPort, advMinimapEnabled, advEmitEnabled, advEmitPort, advEmitHost);
+      await SaveAdvanced(advUdpEnabled, advUdpPort, advMinimapEnabled, advEmitEnabled, advEmitPort, advEmitHost, advNotifyEnabled);
       advStatus = "Saved ✓";
       setTimeout(() => {
         advStatus = "";
@@ -66,6 +68,13 @@
         max="65535"
         disabled={!advUdpEnabled}
       />
+    </div>
+
+    <div class="flex items-center gap-1.5 mb-1">
+      <label>
+        <input type="checkbox" bind:checked={advNotifyEnabled} />
+        Notification when QSO logged
+      </label>
     </div>
 
     <div class="flex items-center gap-1.5 mb-1 mt-2 border-t border-stroke-section pt-2">

@@ -18,6 +18,7 @@ import (
 	"waveloggate/internal/config"
 	"waveloggate/internal/debug"
 	"waveloggate/internal/hamlib"
+	"waveloggate/internal/notify"
 	"waveloggate/internal/qsy"
 	"waveloggate/internal/queue"
 	"waveloggate/internal/radio"
@@ -86,6 +87,7 @@ func (a *App) startup(ctx context.Context) {
 			if a.ctx != nil {
 				wailsruntime.EventsEmit(a.ctx, "qso:result", r)
 			}
+			a.notifyQSO(r)
 		},
 		func(n int) {
 			if a.ctx != nil {
@@ -327,12 +329,20 @@ func (a *App) startUDPServer(port int) error {
 		&profile,
 		func(result *wavelog.QSOResult) {
 			wailsruntime.EventsEmit(a.ctx, "qso:result", result)
+			a.notifyQSO(result)
 		},
 		func(msg string) {
 			a.emitStatus(msg)
 		},
 	)
 	return a.udpSrv.Start()
+}
+
+func (a *App) notifyQSO(r *wavelog.QSOResult) {
+	if r == nil || !a.cfg.NotifyEnabled {
+		return
+	}
+	go notify.QSOResult(r)
 }
 
 // queueFilePath returns the on-disk path for the persistent QSO queue.
@@ -373,6 +383,13 @@ func (a *App) GetConfig() config.Config {
 
 // SaveConfig saves the configuration and returns the updated config.
 func (a *App) SaveConfig(cfg config.Config) config.Config {
+	cfg.UDPEnabled = a.cfg.UDPEnabled
+	cfg.UDPPort = a.cfg.UDPPort
+	cfg.MinimapEnabled = a.cfg.MinimapEnabled
+	cfg.UDPEmitEnabled = a.cfg.UDPEmitEnabled
+	cfg.UDPEmitPort = a.cfg.UDPEmitPort
+	cfg.UDPEmitHost = a.cfg.UDPEmitHost
+	cfg.NotifyEnabled = a.cfg.NotifyEnabled
 	a.cfg = cfg
 	_ = config.Save(cfg)
 
@@ -488,6 +505,7 @@ type UDPStatus struct {
 	EmitEnabled    bool   `json:"emitEnabled"`
 	EmitPort       int    `json:"emitPort"`
 	EmitHost       string `json:"emitHost"`
+	NotifyEnabled  bool   `json:"notifyEnabled"`
 }
 
 // GetUDPStatus returns the current UDP server status.
@@ -500,6 +518,7 @@ func (a *App) GetUDPStatus() UDPStatus {
 		EmitEnabled:    a.cfg.UDPEmitEnabled,
 		EmitPort:       a.cfg.UDPEmitPort,
 		EmitHost:       a.cfg.UDPEmitHost,
+		NotifyEnabled:  a.cfg.NotifyEnabled,
 	}
 }
 
@@ -582,7 +601,7 @@ func (a *App) RotatorPark() {
 }
 
 // SaveAdvanced saves global (non-profile) settings.
-func (a *App) SaveAdvanced(udpEnabled bool, udpPort int, minimapEnabled bool, emitEnabled bool, emitPort int, emitHost string) error {
+func (a *App) SaveAdvanced(udpEnabled bool, udpPort int, minimapEnabled bool, emitEnabled bool, emitPort int, emitHost string, notifyEnabled bool) error {
 	if udpEnabled && emitEnabled && udpPort == emitPort {
 		return fmt.Errorf("emit port must differ from the listener port (%d)", udpPort)
 	}
@@ -592,6 +611,7 @@ func (a *App) SaveAdvanced(udpEnabled bool, udpPort int, minimapEnabled bool, em
 	a.cfg.UDPEmitEnabled = emitEnabled
 	a.cfg.UDPEmitPort = emitPort
 	a.cfg.UDPEmitHost = emitHost
+	a.cfg.NotifyEnabled = notifyEnabled
 	_ = config.Save(a.cfg)
 
 	wailsruntime.EventsEmit(a.ctx, "advanced:changed", map[string]interface{}{

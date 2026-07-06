@@ -60,6 +60,7 @@ type Config struct {
 	UDPEmitEnabled bool      `json:"udp_emit_enabled"`
 	UDPEmitPort    int       `json:"udp_emit_port"`
 	UDPEmitHost    string    `json:"udp_emit_host"`
+	NotifyEnabled  bool      `json:"notify_enabled"`
 	Profiles       []Profile `json:"profiles"`
 }
 
@@ -88,7 +89,7 @@ func defaultProfile() Profile {
 
 func Default() Config {
 	return Config{
-		Version:        7,
+		Version:        8,
 		Profile:        0,
 		ProfileNames:   []string{"Profile 1", "Profile 2"},
 		UDPEnabled:     true,
@@ -97,6 +98,7 @@ func Default() Config {
 		UDPEmitEnabled: false,
 		UDPEmitPort:    2334,
 		UDPEmitHost:    "127.0.0.1",
+		NotifyEnabled:  false,
 		Profiles:       []Profile{defaultProfile(), defaultProfile()},
 	}
 }
@@ -149,7 +151,7 @@ func Save(cfg Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// migrate ensures the config matches version 7 schema.
+// migrate ensures the config matches version 8 schema.
 func migrate(cfg Config) Config {
 	// Ensure at least 2 profiles exist.
 	for len(cfg.Profiles) < 2 {
@@ -187,6 +189,10 @@ func migrate(cfg Config) Config {
 	if cfg.Version < 7 {
 		cfg.Version = 7
 		// Satellite/transverter fields default to zero values (disabled).
+	}
+	if cfg.Version < 8 {
+		cfg.Version = 8
+		// NotifyEnabled defaults to false — already zero value.
 	}
 	return cfg
 }
