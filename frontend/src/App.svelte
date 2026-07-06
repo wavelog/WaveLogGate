@@ -6,11 +6,14 @@
     GetCertInfo,
     GetRotatorStatus,
     GetUDPStatus,
+    GetQueuePending,
     RotatorSetFollow,
     RotatorPark,
     RotatorGoto,
     RadioSetFreq,
     RadioSetTxFreq,
+    RetryNow,
+    FlushQueue,
   } from "../wailsjs/go/main/App.js";
   import StatusTab from "./components/StatusTab.svelte";
   import ConfigTab from "./components/ConfigTab.svelte";
@@ -52,6 +55,7 @@
   let demandedEl    = null;
   let minimapEnabled = false;
   let certInfo      = null;
+  let queuePending  = 0;
 
   // ── Reactive mini-height ───────────────────────────────────────────────────
   $: miniHeight = rotatorEnabled
@@ -94,6 +98,17 @@
   async function park() {
     rotFollow = "off";
     await RotatorPark();
+  }
+
+  async function retryQueue() {
+    await RetryNow();
+  }
+
+  // Confirmation is the two-step Flush→Sure? button in StatusTab; no native
+  // dialog (window.confirm is a silent no-op in WKWebView on macOS).
+  async function flushQueue() {
+    if (!queuePending) return;
+    await FlushQueue();
   }
 
   function mhzStrToHz(mhzStr) {
@@ -167,7 +182,7 @@
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   let offRadio, offQso, offStatus, offRotPos, offRotStatus, offRotBearing,
-      offRotMoving, offRotFollow, offRotGoto, offProfile, offRadioEnabled, offRotEnabled, offAdvanced, offCert;
+      offRotMoving, offRotFollow, offRotGoto, offProfile, offRadioEnabled, offRotEnabled, offAdvanced, offCert, offQueue;
 
   onMount(async () => {
     updateClock();
@@ -222,6 +237,7 @@
       minimapEnabled = data?.minimapEnabled ?? false;
     });
     offCert = EventsOn("cert:install_needed", (data) => { certInfo = data; });
+    offQueue = EventsOn("queue:pending", (n) => { queuePending = n || 0; });
     offRotFollow = EventsOn("rotator:followmode", (mode) => { rotFollow = mode; });
     offRotGoto = EventsOn("rotator:goto", (data) => {
       if (data) { demandedAz = data.az; demandedEl = data.el; _lastRotCmdTime = Date.now(); }
@@ -241,6 +257,10 @@
 
     const adv = await GetUDPStatus();
     minimapEnabled = adv.minimapEnabled;
+
+    try {
+      queuePending = await GetQueuePending();
+    } catch (_) { /* bridge not ready yet */ }
 
     try {
       const ci = await GetCertInfo();
@@ -278,6 +298,7 @@
     if (offRadioEnabled) offRadioEnabled();
     if (offAdvanced)   offAdvanced();
     if (offCert)       offCert();
+    if (offQueue)      offQueue();
   });
 </script>
 
@@ -334,8 +355,11 @@
           {radioEnabled} {rotatorEnabled}
           {rotConnected} {rotMoving} {rotAz} {rotEl} {rotFollow}
           {hfAz} {satAz} {satEl} {demandedAz} {demandedEl}
+          {queuePending}
           on:follow={(e) => setFollow(e.detail)}
           on:park={park}
+          on:retry={retryQueue}
+          on:flush={flushQueue}
           on:freqscroll={handleFreqScroll}
           on:txfreqscroll={handleTxFreqScroll}
           on:rotscroll={handleRotScroll}
