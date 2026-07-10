@@ -262,11 +262,14 @@ func (c *HamlibClient) sendCmd(cmd string) (string, error) {
 	}
 
 	reader := bufio.NewReader(conn)
-	line, _ := reader.ReadString('\n')
+	line, readErr := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
 
 	if strings.HasPrefix(line, "RPRT") {
 		return "", fmt.Errorf("hamlib error: %s", line)
+	}
+	if readErr != nil && line == "" {
+		return "", fmt.Errorf("hamlib read error for cmd %q: %w", strings.TrimSpace(cmd), readErr)
 	}
 	return line, nil
 }
