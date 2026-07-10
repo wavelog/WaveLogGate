@@ -262,11 +262,14 @@ func (c *HamlibClient) sendCmd(cmd string) (string, error) {
 	}
 
 	reader := bufio.NewReader(conn)
-	line, _ := reader.ReadString('\n')
+	line, readErr := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
 
 	if strings.HasPrefix(line, "RPRT") {
 		return "", fmt.Errorf("hamlib error: %s", line)
+	}
+	if readErr != nil && line == "" {
+		return "", readErr
 	}
 	return line, nil
 }
@@ -369,7 +372,10 @@ func (c *HamlibClient) GetStatus() (RigStatus, error) {
 	}
 	s.FreqA, _ = strconv.ParseFloat(freqStr, 64)
 
-	modeStr, _ := c.sendCmd("m\n")
+	modeStr, err := c.sendCmd("m\n")
+	if err != nil {
+		return s, err
+	}
 	s.Mode = strings.TrimSpace(modeStr)
 
 	// IC-9700 SAT mode: Main band = downlink (RX), Sub band = uplink (TX).
