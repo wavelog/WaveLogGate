@@ -269,7 +269,7 @@ func (c *HamlibClient) sendCmd(cmd string) (string, error) {
 		return "", fmt.Errorf("hamlib error: %s", line)
 	}
 	if readErr != nil && line == "" {
-		return "", fmt.Errorf("hamlib read error for cmd %q: %w", strings.TrimSpace(cmd), readErr)
+		return "", readErr
 	}
 	return line, nil
 }
