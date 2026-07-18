@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -34,11 +35,91 @@ const (
 	ReasonInternet    = "internet problem"
 	ReasonTimeout     = "timeout"
 	ReasonServerError = "server error"
+	ReasonRateLimited = "rate limited"
 )
 
 // IsTransient reports whether a SendQSO reason is worth retrying later.
 func IsTransient(reason string) bool {
-	return reason == ReasonInternet || reason == ReasonTimeout || reason == ReasonServerError
+	return reason == ReasonInternet || reason == ReasonTimeout ||
+		reason == ReasonServerError || reason == ReasonRateLimited
+}
+
+// tokenPrefixV2 marks API tokens issued by Wavelog's v2 API. v1 keys never carry it,
+// so the prefix alone decides which API a profile talks to — no extra setting needed.
+const tokenPrefixV2 = "wl2_"
+
+// IsV2Key reports whether the given key targets the v2 API.
+func IsV2Key(key string) bool {
+	return strings.HasPrefix(key, tokenPrefixV2)
+}
+
+// RequiredScopes lists the v2 scopes WavelogGate needs for full operation:
+// station list, QSO upload and radio status.
+var RequiredScopes = []string{"station:read", "qso:write", "radio:write"}
+
+// TokenInfo is the metadata returned by GET /api/v2/token ("whoami").
+type TokenInfo struct {
+	Name   string   `json:"name"`
+	Owner  string   `json:"owner"`
+	Scopes []string `json:"scopes"`
+}
+
+// MissingScopes returns the RequiredScopes the token does not carry.
+func (t *TokenInfo) MissingScopes() []string {
+	granted := make(map[string]bool, len(t.Scopes))
+	for _, s := range t.Scopes {
+		granted[s] = true
+	}
+	var missing []string
+	for _, s := range RequiredScopes {
+		if !granted[s] {
+			missing = append(missing, s)
+		}
+	}
+	return missing
+}
+
+// GetTokenInfo fetches token metadata from the v2 API. The endpoint needs no scope,
+// so it works even for a token that is missing everything else — which makes it the
+// right probe for the connectivity test.
+func (c *Client) GetTokenInfo() (*TokenInfo, error) {
+	cfg := c.cfg.Load()
+	endpoint := baseURL(cfg) + "/api/v2/token"
+
+	req, err := c.newRequest("GET", endpoint, nil, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	debug.Log("[WL] token info HTTP %d: %s", resp.StatusCode, string(data))
+
+	if strings.Contains(string(data), "<html") || strings.Contains(string(data), "<!DOCTYPE") {
+		return nil, fmt.Errorf("wrong URL")
+	}
+
+	var vr v2Response
+	if err := json.Unmarshal(data, &vr); err != nil {
+		return nil, fmt.Errorf("invalid response")
+	}
+	if vr.Error != nil {
+		return nil, fmt.Errorf("%s", vr.reason())
+	}
+
+	var info TokenInfo
+	if err := json.Unmarshal(vr.Data, &info); err != nil {
+		return nil, fmt.Errorf("invalid response")
+	}
+	return &info, nil
 }
 
 // RadioData holds the data sent to Wavelog's /api/radio endpoint.
@@ -98,6 +179,33 @@ type qsoPayload struct {
 	String           string `json:"string"`
 }
 
+type qsoPayloadV2 struct {
+	StationProfileID string `json:"station_profile_id"`
+	ImportType       string `json:"import_type"`
+	Adif             string `json:"adif"`
+	DryRun           bool   `json:"dryrun,omitempty"`
+}
+
+// v2Response is the common v2 envelope: success carries data, failure carries error.
+type v2Response struct {
+	Data  json.RawMessage `json:"data"`
+	Error *struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// reason renders a v2 error for display, preferring the human-readable message.
+func (r v2Response) reason() string {
+	if r.Error == nil {
+		return "invalid response"
+	}
+	if r.Error.Message != "" {
+		return r.Error.Message
+	}
+	return r.Error.Code
+}
+
 type apiResponse struct {
 	Status   string   `json:"status"`
 	Reason   string   `json:"reason"`
@@ -118,36 +226,80 @@ func redactKey(key string) string {
 	return strings.Repeat("*", len(key)-4) + key[len(key)-4:]
 }
 
-// SendQSO posts an ADIF string to Wavelog. dryRun uses /api/qso/true.
+// baseURL returns the configured Wavelog URL without a trailing slash. The user is
+// expected to include /index.php themselves (see README).
+func baseURL(cfg *config.Profile) string {
+	return strings.TrimRight(cfg.WavelogURL, "/")
+}
+
+// newRequest builds a request with the common headers. For v2 keys the token goes into
+// the Authorization header; v1 carries it in the body or path instead.
+func (c *Client) newRequest(method, endpoint string, body []byte, cfg *config.Profile) (*http.Request, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, endpoint, reader)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if IsV2Key(cfg.WavelogKey) {
+		req.Header.Set("Authorization", "Bearer "+cfg.WavelogKey)
+	}
+	return req, nil
+}
+
+// SendQSO posts an ADIF string to Wavelog. dryRun asks the server to validate only.
+// v1 uses POST /api/qso (+/true), v2 uses POST /api/v2/qso with a dryrun flag; both
+// submit ADIF so the local ADIF pipeline stays unchanged.
 func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	cfg := c.cfg.Load()
-	endpoint := strings.TrimRight(cfg.WavelogURL, "/") + "/api/qso"
-	if dryRun {
-		endpoint += "/true"
+	v2 := IsV2Key(cfg.WavelogKey)
+
+	var (
+		endpoint string
+		payload  any
+	)
+	if v2 {
+		endpoint = baseURL(cfg) + "/api/v2/qso"
+		payload = qsoPayloadV2{
+			StationProfileID: cfg.WavelogID,
+			ImportType:       "adif",
+			Adif:             adifStr,
+			DryRun:           dryRun,
+		}
+	} else {
+		endpoint = baseURL(cfg) + "/api/qso"
+		if dryRun {
+			endpoint += "/true"
+		}
+		payload = qsoPayload{
+			Key:              cfg.WavelogKey,
+			StationProfileID: cfg.WavelogID,
+			Type:             "adif",
+			String:           adifStr,
+		}
 	}
-	debug.Log("[WL] endpoint: %s  dryRun=%v", endpoint, dryRun)
+	debug.Log("[WL] endpoint: %s  dryRun=%v  v2=%v", endpoint, dryRun, v2)
 
 	// Extract QSO details from ADIF for response (since API doesn't return them for ADIF type)
 	qsoInfo := adif.Parse(adifStr)
 
-	payload := qsoPayload{
-		Key:              cfg.WavelogKey,
-		StationProfileID: cfg.WavelogID,
-		Type:             "adif",
-		String:           adifStr,
-	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 	debug.Log("[WL] payload: %s", strings.Replace(string(body), cfg.WavelogKey, redactKey(cfg.WavelogKey), -1))
 
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
+	req, err := c.newRequest("POST", endpoint, body, cfg)
 	if err != nil {
 		return nil, fmt.Errorf(ReasonInternet)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -169,10 +321,45 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 		return &QSOResult{Success: false, Reason: ReasonServerError}, nil
 	}
 
+	// v2 rate limits with 429 — also worth retrying.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		debug.Log("[WL] rate limited — treating as transient")
+		return &QSOResult{Success: false, Reason: ReasonRateLimited}, nil
+	}
+
 	// Detect HTML response (wrong URL).
 	if strings.Contains(bodyStr, "<html") || strings.Contains(bodyStr, "<!DOCTYPE") {
 		debug.Log("[WL] response is HTML — wrong URL")
 		return &QSOResult{Success: false, Reason: "wrong URL"}, nil
+	}
+
+	// success builds the result from the locally parsed ADIF — neither API echoes the
+	// QSO fields back for ADIF submissions.
+	success := func() *QSOResult {
+		debug.Log("[WL] QSO created: call=%s band=%s mode=%s", qsoInfo["CALL"], qsoInfo["BAND"], qsoInfo["MODE"])
+		return &QSOResult{
+			Success: true,
+			Call:    qsoInfo["CALL"],
+			Band:    qsoInfo["BAND"],
+			Mode:    qsoInfo["MODE"],
+			RstSent: qsoInfo["RST_SENT"],
+			RstRcvd: qsoInfo["RST_RCVD"],
+			TimeOn:  qsoInfo["TIME_ON"],
+		}
+	}
+
+	if v2 {
+		var vr v2Response
+		if err := json.Unmarshal(data, &vr); err != nil {
+			debug.Log("[WL] JSON unmarshal failed: %v  raw: %s", err, bodyStr)
+			return &QSOResult{Success: false, Reason: "invalid response"}, nil
+		}
+		if resp.StatusCode < 300 && vr.Error == nil && len(vr.Data) > 0 {
+			return success(), nil
+		}
+		reason := vr.reason()
+		debug.Log("[WL] QSO rejected: HTTP %d reason=%s", resp.StatusCode, reason)
+		return &QSOResult{Success: false, Reason: reason}, nil
 	}
 
 	var ar apiResponse
@@ -182,18 +369,7 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	}
 
 	if ar.Status == "created" {
-		debug.Log("[WL] QSO created: call=%s band=%s mode=%s", qsoInfo["CALL"], qsoInfo["BAND"], qsoInfo["MODE"])
-		// For ADIF type, Wavelog API doesn't return QSO details
-		// Use the extracted info from our ADIF string
-		return &QSOResult{
-			Success: true,
-			Call:    qsoInfo["CALL"],
-			Band:    qsoInfo["BAND"],
-			Mode:    qsoInfo["MODE"],
-			RstSent: qsoInfo["RST_SENT"],
-			RstRcvd: qsoInfo["RST_RCVD"],
-			TimeOn:  qsoInfo["TIME_ON"],
-		}, nil
+		return success(), nil
 	}
 
 	reason := ar.Reason
@@ -206,7 +382,7 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 
 type radioPayload struct {
 	Radio       string  `json:"radio"`
-	Key         string  `json:"key"`
+	Key         string  `json:"key,omitempty"`
 	Frequency   int64   `json:"frequency"`
 	Mode        string  `json:"mode"`
 	Power       float64 `json:"power,omitempty"`
@@ -217,10 +393,14 @@ type radioPayload struct {
 	SatMode     string  `json:"sat_mode,omitempty"`
 }
 
-// UpdateRadioStatus posts radio status to Wavelog's /api/radio.
+// UpdateRadioStatus posts radio status to Wavelog's radio endpoint.
+// Frequencies are Hz in both API versions, so only path and auth differ.
 func (c *Client) UpdateRadioStatus(data RadioData) error {
 	cfg := c.cfg.Load()
-	endpoint := strings.TrimRight(cfg.WavelogURL, "/") + "/api/radio"
+	endpoint := baseURL(cfg) + "/api/radio"
+	if IsV2Key(cfg.WavelogKey) {
+		endpoint = baseURL(cfg) + "/api/v2/radio"
+	}
 
 	freq := data.Frequency
 	freqRx := data.FrequencyRx
@@ -233,9 +413,15 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 		mode, modeRx = modeRx, mode
 	}
 
+	// v2 authenticates via header, so the body must not carry the key.
+	key := cfg.WavelogKey
+	if IsV2Key(key) {
+		key = ""
+	}
+
 	p := radioPayload{
 		Radio:       cfg.WavelogRadioname,
-		Key:         cfg.WavelogKey,
+		Key:         key,
 		Frequency:   freq,
 		Mode:        mode,
 		FrequencyRx: freqRx,
@@ -253,13 +439,10 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
+	req, err := c.newRequest("POST", endpoint, body, cfg)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -269,16 +452,29 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 	return nil
 }
 
+// stationV2 is the v2 shape of a station profile. It is mapped onto Station so the
+// frontend keeps consuming the v1 field names.
+type stationV2 struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Callsign string `json:"callsign"`
+}
+
 // GetStations fetches the station profile list from Wavelog.
+// v1 takes the key in the path, v2 uses GET /api/v2/station with a Bearer header.
 func (c *Client) GetStations() ([]Station, error) {
 	cfg := c.cfg.Load()
-	endpoint := strings.TrimRight(cfg.WavelogURL, "/") + "/api/station_info/" + cfg.WavelogKey
+	v2 := IsV2Key(cfg.WavelogKey)
 
-	req, err := http.NewRequest("GET", endpoint, nil)
+	endpoint := baseURL(cfg) + "/api/station_info/" + cfg.WavelogKey
+	if v2 {
+		endpoint = baseURL(cfg) + "/api/v2/station"
+	}
+
+	req, err := c.newRequest("GET", endpoint, nil, cfg)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -289,6 +485,29 @@ func (c *Client) GetStations() ([]Station, error) {
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+
+	if v2 {
+		var vr v2Response
+		if err := json.Unmarshal(data, &vr); err != nil {
+			return nil, fmt.Errorf("invalid response: %w", err)
+		}
+		if vr.Error != nil {
+			return nil, fmt.Errorf("%s", vr.reason())
+		}
+		var v2Stations []stationV2
+		if err := json.Unmarshal(vr.Data, &v2Stations); err != nil {
+			return nil, fmt.Errorf("invalid response: %w", err)
+		}
+		stations := make([]Station, 0, len(v2Stations))
+		for _, s := range v2Stations {
+			stations = append(stations, Station{
+				Name:     s.Name,
+				Callsign: s.Callsign,
+				ID:       strconv.Itoa(s.ID),
+			})
+		}
+		return stations, nil
 	}
 
 	var stations []Station
