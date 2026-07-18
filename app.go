@@ -418,6 +418,24 @@ const demoADIF = `<call:5>DJ7NT <gridsquare:4>JO30 <mode:3>FT8 <rst_sent:3>-15 <
 // TestWavelog tests Wavelog connectivity with a demo ADIF record.
 func (a *App) TestWavelog(profile config.Profile) TestResult {
 	client := wavelog.New(&profile, appVersion)
+
+	if wavelog.IsV2Key(profile.WavelogKey) {
+		info, err := client.GetTokenInfo()
+		if err != nil {
+			return TestResult{Success: false, Reason: err.Error()}
+		}
+		if missing := info.MissingScopes(); len(missing) > 0 {
+			granted := "none"
+			if len(info.Scopes) > 0 {
+				granted = strings.Join(info.Scopes, ", ")
+			}
+			return TestResult{
+				Success: false,
+				Reason:  "missing scopes: " + strings.Join(missing, ", ") + " — granted: " + granted,
+			}
+		}
+	}
+
 	result, err := client.SendQSO(demoADIF, true)
 	if err != nil {
 		return TestResult{Success: false, Reason: err.Error()}

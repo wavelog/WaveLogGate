@@ -48,9 +48,78 @@ func IsTransient(reason string) bool {
 // so the prefix alone decides which API a profile talks to — no extra setting needed.
 const tokenPrefixV2 = "wl2_"
 
-// useV2 reports whether the configured key targets the v2 API.
-func useV2(key string) bool {
+// IsV2Key reports whether the given key targets the v2 API.
+func IsV2Key(key string) bool {
 	return strings.HasPrefix(key, tokenPrefixV2)
+}
+
+// RequiredScopes lists the v2 scopes WavelogGate needs for full operation:
+// station list, QSO upload and radio status.
+var RequiredScopes = []string{"station:read", "qso:write", "radio:write"}
+
+// TokenInfo is the metadata returned by GET /api/v2/token ("whoami").
+type TokenInfo struct {
+	Name   string   `json:"name"`
+	Owner  string   `json:"owner"`
+	Scopes []string `json:"scopes"`
+}
+
+// MissingScopes returns the RequiredScopes the token does not carry.
+func (t *TokenInfo) MissingScopes() []string {
+	granted := make(map[string]bool, len(t.Scopes))
+	for _, s := range t.Scopes {
+		granted[s] = true
+	}
+	var missing []string
+	for _, s := range RequiredScopes {
+		if !granted[s] {
+			missing = append(missing, s)
+		}
+	}
+	return missing
+}
+
+// GetTokenInfo fetches token metadata from the v2 API. The endpoint needs no scope,
+// so it works even for a token that is missing everything else — which makes it the
+// right probe for the connectivity test.
+func (c *Client) GetTokenInfo() (*TokenInfo, error) {
+	cfg := c.cfg.Load()
+	endpoint := baseURL(cfg) + "/api/v2/token"
+
+	req, err := c.newRequest("GET", endpoint, nil, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	debug.Log("[WL] token info HTTP %d: %s", resp.StatusCode, string(data))
+
+	if strings.Contains(string(data), "<html") || strings.Contains(string(data), "<!DOCTYPE") {
+		return nil, fmt.Errorf("wrong URL")
+	}
+
+	var vr v2Response
+	if err := json.Unmarshal(data, &vr); err != nil {
+		return nil, fmt.Errorf("invalid response")
+	}
+	if vr.Error != nil {
+		return nil, fmt.Errorf("%s", vr.reason())
+	}
+
+	var info TokenInfo
+	if err := json.Unmarshal(vr.Data, &info); err != nil {
+		return nil, fmt.Errorf("invalid response")
+	}
+	return &info, nil
 }
 
 // RadioData holds the data sent to Wavelog's /api/radio endpoint.
@@ -179,7 +248,7 @@ func (c *Client) newRequest(method, endpoint string, body []byte, cfg *config.Pr
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if useV2(cfg.WavelogKey) {
+	if IsV2Key(cfg.WavelogKey) {
 		req.Header.Set("Authorization", "Bearer "+cfg.WavelogKey)
 	}
 	return req, nil
@@ -190,7 +259,7 @@ func (c *Client) newRequest(method, endpoint string, body []byte, cfg *config.Pr
 // submit ADIF so the local ADIF pipeline stays unchanged.
 func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 	cfg := c.cfg.Load()
-	v2 := useV2(cfg.WavelogKey)
+	v2 := IsV2Key(cfg.WavelogKey)
 
 	var (
 		endpoint string
@@ -329,7 +398,7 @@ type radioPayload struct {
 func (c *Client) UpdateRadioStatus(data RadioData) error {
 	cfg := c.cfg.Load()
 	endpoint := baseURL(cfg) + "/api/radio"
-	if useV2(cfg.WavelogKey) {
+	if IsV2Key(cfg.WavelogKey) {
 		endpoint = baseURL(cfg) + "/api/v2/radio"
 	}
 
@@ -346,7 +415,7 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 
 	// v2 authenticates via header, so the body must not carry the key.
 	key := cfg.WavelogKey
-	if useV2(key) {
+	if IsV2Key(key) {
 		key = ""
 	}
 
@@ -395,7 +464,7 @@ type stationV2 struct {
 // v1 takes the key in the path, v2 uses GET /api/v2/station with a Bearer header.
 func (c *Client) GetStations() ([]Station, error) {
 	cfg := c.cfg.Load()
-	v2 := useV2(cfg.WavelogKey)
+	v2 := IsV2Key(cfg.WavelogKey)
 
 	endpoint := baseURL(cfg) + "/api/station_info/" + cfg.WavelogKey
 	if v2 {
