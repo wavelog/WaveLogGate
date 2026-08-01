@@ -164,7 +164,11 @@ func detectLinuxInstallGuide() string {
 func ListSerialPorts() []string {
 	switch runtime.GOOS {
 	case "darwin":
-		return listPortsGlob([]string{"/dev/tty.usbserial*", "/dev/tty.usbmodem*", "/dev/cu.usbserial*", "/dev/cu.usbmodem*"})
+		return listPortsGlob([]string{
+			"/dev/tty.usbserial*", "/dev/tty.usbmodem*",
+			"/dev/cu.usbserial*", "/dev/cu.usbmodem*",
+			"/dev/tty.SLAB*", "/dev/cu.SLAB*",
+		})
 	case "linux":
 		ports := listPortsGlob([]string{"/dev/ttyUSB*", "/dev/ttyACM*"})
 		// Include ttyS0-ttyS3 if they exist.
