@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -239,13 +241,22 @@ type HamlibClient struct {
 	subFreq    float64
 	subFreqAt  time.Time
 	subFreqTTL time.Duration
+
+	// Power reporting. rigctld's RFPOWER level is normalised 0.0–1.0, so it
+	// needs converting to watts before wavelog can use it.
+	readPower      bool    // false when the profile has "Ignore Power" set
+	maxPower       float64 // watts at level 1.0; 0 = ask hamlib via power2mW
+	rfPowerFails   bool    // sticky: rig rejected RFPOWER, stop asking
+	power2mWFailAt float64 // TX freq power2mW was rejected at; 0 = no rejection
 }
 
-func NewHamlib(host, port string) *HamlibClient {
+func NewHamlib(host, port string, readPower bool, maxPower float64) *HamlibClient {
 	return &HamlibClient{
 		host:       host,
 		port:       port,
 		subFreqTTL: 5 * time.Second,
+		readPower:  readPower,
+		maxPower:   maxPower,
 	}
 }
 
@@ -266,13 +277,20 @@ func (c *HamlibClient) sendCmd(cmd string) (string, error) {
 	line = strings.TrimSpace(line)
 
 	if strings.HasPrefix(line, "RPRT") {
-		return "", fmt.Errorf("hamlib error: %s", line)
+		return "", fmt.Errorf("%w: %s", errRig, line)
 	}
 	if readErr != nil && line == "" {
 		return "", readErr
 	}
 	return line, nil
 }
+
+// errRig marks an RPRT rejection from the rig, as opposed to a connection
+// problem. Callers use this to tell "this rig will never support the command"
+// apart from "rigctld was briefly unreachable".
+var errRig = errors.New("hamlib error")
+
+func isRigError(err error) bool { return errors.Is(err, errRig) }
 
 // sendCmds sends multiple commands over a single TCP connection and returns
 // one trimmed response line per command. Use this for VFO-swap sequences
@@ -363,6 +381,100 @@ func (c *HamlibClient) setSubVFOFreq(hz int64) error {
 	return nil
 }
 
+// readPowerWatts returns the current TX power in watts, or 0 if it cannot be
+// determined.
+//
+// rigctld reports RFPOWER as a normalised 0.0–1.0 level, so it has to be scaled
+// to watts. An explicitly configured max power wins — that is the only way to be
+// right when an amplifier or transverter sits between the rig and the antenna.
+// Otherwise we ask hamlib itself via power2mW, which uses the backend's own power
+// tables and so stays correct on rigs whose maximum differs per band (IC-9700:
+// 100 W / 75 W / 10 W).
+//
+// freqHz and mode should describe the TX VFO, since power2mW is band-dependent.
+func (c *HamlibClient) readPowerWatts(freqHz float64, mode string) float64 {
+	if !c.readPower || c.rfPowerFails {
+		return 0
+	}
+
+	resp, err := c.sendCmd("l RFPOWER\n")
+	if err != nil {
+		if isRigError(err) {
+			c.rfPowerFails = true
+			debug.Log("[hamlib] rig does not support RFPOWER, power reporting disabled: %v", err)
+		} else {
+			debug.Log("[hamlib] RFPOWER read failed: %v", err)
+		}
+		return 0
+	}
+	level, err := strconv.ParseFloat(strings.TrimSpace(resp), 64)
+	if err != nil {
+		debug.Log("[hamlib] RFPOWER unparseable: %q", resp)
+		return 0
+	}
+	level = math.Max(0, math.Min(1, level))
+	if level == 0 {
+		return 0
+	}
+
+	if c.maxPower > 0 {
+		watts := roundWatts(level * c.maxPower)
+		debug.Log("[hamlib] power: level=%.6f max=%gW → %gW (configured max)", level, c.maxPower, watts)
+		return watts
+	}
+
+	// Rejections are latched against the frequency they happened at, not
+	// globally: a backend with no power tables rejects every call, but so does a
+	// perfectly good backend asked about a receive-only frequency (an IC-7300
+	// hears 0.03–74 MHz and transmits on the ham bands only). Keying the latch to
+	// the frequency stops the per-second retries in both cases, and re-arms as
+	// soon as the operator tunes somewhere else.
+	if c.power2mWFailAt == freqHz {
+		return 0
+	}
+
+	// power2mW is a long-form rigctl command: \power2mW <level> <freq> <mode>
+	mwResp, err := c.sendCmd(fmt.Sprintf("\\power2mW %.6f %.0f %s\n", level, freqHz, mode))
+	if err != nil {
+		// Latch a rig rejection, but let a transient connection error retry on
+		// the next poll.
+		if isRigError(err) {
+			c.power2mWFailAt = freqHz
+			debug.Log("[hamlib] power2mW rejected at %.0f Hz, auto power off here (set Max Power to report it): %v", freqHz, err)
+		} else {
+			debug.Log("[hamlib] power2mW read failed: %v", err)
+		}
+		return 0
+	}
+	mw, err := strconv.ParseFloat(strings.TrimSpace(mwResp), 64)
+	if err != nil || mw <= 0 {
+		c.power2mWFailAt = freqHz
+		debug.Log("[hamlib] power2mW returned %q at %.0f Hz, auto power off here (set Max Power to report it)", mwResp, freqHz)
+		return 0
+	}
+
+	watts := roundWatts(mw / 1000)
+	debug.Log("[hamlib] power: level=%.6f freq=%.0f mode=%s → %gW (power2mW)", level, freqHz, mode, watts)
+	return watts
+}
+
+// roundWatts rounds power to the precision the rig actually knows.
+//
+// RFPOWER comes back as a level quantised by the radio's own scale, not by
+// anything meaningful: an IC-7300 set to 52% reports 133/255 = 0.521569, which
+// would otherwise be logged as 52.2 W. At 10 W and up that fraction is an
+// artifact, so round to whole watts. Below it the fraction is real — QRP
+// operators log 0.5 W — so keep one decimal.
+//
+// Rounding also collapses adjacent steps of the rig's scale, so small drift no
+// longer counts as a change and pushes an update to wavelog every poll.
+func roundWatts(w float64) float64 {
+	if w >= 10 {
+		return math.Round(w)
+	}
+	return math.Round(w*10) / 10
+}
+
 func (c *HamlibClient) GetStatus() (RigStatus, error) {
 	var s RigStatus
 
@@ -403,6 +515,16 @@ func (c *HamlibClient) GetStatus() (RigStatus, error) {
 			s.ModeB = strings.TrimSpace(modeBStr)
 		}
 	}
+
+	// power2mW is band-dependent, so describe the TX VFO where we know it.
+	pwrFreq, pwrMode := s.FreqA, s.Mode
+	if s.Split && s.FreqB > 0 {
+		pwrFreq = s.FreqB
+		if s.ModeB != "" {
+			pwrMode = s.ModeB
+		}
+	}
+	s.Power = c.readPowerWatts(pwrFreq, pwrMode)
 
 	return s, nil
 }

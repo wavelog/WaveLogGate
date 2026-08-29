@@ -143,7 +143,9 @@ func (p *Poller) poll() {
 		return
 	}
 
-	// Optionally zero out power.
+	// Optionally zero out power. HamlibClient already skips the RFPOWER read
+	// when this is set; this is the backstop that also covers FLRig, which
+	// reports power unconditionally.
 	if cfg.IgnorePwr {
 		status.Power = 0
 	}
@@ -208,7 +210,7 @@ func buildClient(cfg *config.Profile) RadioClient {
 		// Connect to rigctld via TCP for both internal (managed) and external modes
 		// Internal mode: hamlib manager starts rigctld, poller connects to it
 		// External mode: user runs rigctld manually, poller connects to it
-		return NewHamlib(cfg.HamlibHost, cfg.HamlibPort)
+		return NewHamlib(cfg.HamlibHost, cfg.HamlibPort, !cfg.IgnorePwr, cfg.HamlibMaxPower)
 	default:
 		return nil
 	}
