@@ -150,6 +150,11 @@ func (p *Poller) poll() {
 		status.Power = 0
 	}
 
+	// Check for unsupported float power values
+	if math.IsNaN(status.Power) || math.IsInf(status.Power, 0) {
+		status.Power = 0
+	}
+
 	// Apply satellite/transverter frequency offsets.
 	ApplySatOffsets(&status, cfg)
 
