@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -235,19 +234,18 @@ type HamlibClient struct {
 	host string
 	port string
 
-	// Sub-band freq cache for IC-9700 SAT mode.
-	// Reading Sub freq requires a VFO swap which toggles the radio display.
+	// Sub-band freq/mode cache for IC-9700 SAT mode.
+	// Reading Sub freq/band requires a VFO swap which toggles the radio display.
 	// We limit this to once every subFreqTTL to reduce display flicker.
 	subFreq    float64
+	subMode    string
 	subFreqAt  time.Time
 	subFreqTTL time.Duration
 
 	// Power reporting. rigctld's RFPOWER level is normalised 0.0–1.0, so it
 	// needs converting to watts before wavelog can use it.
-	readPower      bool    // false when the profile has "Ignore Power" set
-	maxPower       float64 // watts at level 1.0; 0 = ask hamlib via power2mW
-	rfPowerFails   bool    // sticky: rig rejected RFPOWER, stop asking
-	power2mWFailAt float64 // TX freq power2mW was rejected at; 0 = no rejection
+	readPower bool    // false when the profile has "Ignore Power" set
+	maxPower  float64 // watts at level 1.0; 0 = ask hamlib via power2mW
 }
 
 func NewHamlib(host, port string, readPower bool, maxPower float64) *HamlibClient {
@@ -277,7 +275,7 @@ func (c *HamlibClient) sendCmd(cmd string) (string, error) {
 	line = strings.TrimSpace(line)
 
 	if strings.HasPrefix(line, "RPRT") {
-		return "", fmt.Errorf("%w: %s", errRig, line)
+		return "", fmt.Errorf("hamlib error: %s", line)
 	}
 	if readErr != nil && line == "" {
 		return "", readErr
@@ -285,17 +283,21 @@ func (c *HamlibClient) sendCmd(cmd string) (string, error) {
 	return line, nil
 }
 
-// errRig marks an RPRT rejection from the rig, as opposed to a connection
-// problem. Callers use this to tell "this rig will never support the command"
-// apart from "rigctld was briefly unreachable".
-var errRig = errors.New("hamlib error")
+// rigCmd is a command together with the number of response lines rigctld sends
+// back for it. The count is not uniform: a set answers with a single "RPRT 0",
+// while a get answers with its values and no status line at all — `f` returns
+// one line, but `m` returns mode then passband and `s` returns the flag then
+// the split VFO. sendCmds has to know the count up front, or the replies drift
+// out of step with the commands for the rest of the connection.
+type rigCmd struct {
+	cmd   string
+	lines int
+}
 
-func isRigError(err error) bool { return errors.Is(err, errRig) }
-
-// sendCmds sends multiple commands over a single TCP connection and returns
-// one trimmed response line per command. Use this for VFO-swap sequences
-// that must not interleave with other commands.
-func (c *HamlibClient) sendCmds(cmds ...string) ([]string, error) {
+// sendCmds sends multiple commands over a single TCP connection and returns the
+// trimmed response lines for each. Use this for VFO-swap sequences that must
+// not interleave with other commands.
+func (c *HamlibClient) sendCmds(cmds ...rigCmd) ([][]string, error) {
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(c.host, c.port), 3*time.Second)
 	if err != nil {
 		return nil, err
@@ -304,13 +306,24 @@ func (c *HamlibClient) sendCmds(cmds ...string) ([]string, error) {
 	conn.SetDeadline(time.Now().Add(3 * time.Second)) //nolint:errcheck
 
 	reader := bufio.NewReader(conn)
-	responses := make([]string, 0, len(cmds))
-	for _, cmd := range cmds {
-		if _, err := fmt.Fprint(conn, cmd); err != nil {
+	responses := make([][]string, 0, len(cmds))
+	for _, rc := range cmds {
+		if _, err := fmt.Fprint(conn, rc.cmd); err != nil {
 			return responses, err
 		}
-		line, _ := reader.ReadString('\n')
-		responses = append(responses, strings.TrimSpace(line))
+		lines := make([]string, 0, rc.lines)
+		for i := 0; i < rc.lines; i++ {
+			line, readErr := reader.ReadString('\n')
+			line = strings.TrimSpace(line)
+			lines = append(lines, line)
+			// A get that fails answers with one RPRT line in place of its
+			// values, so a multi-line command can come back short. Stop here
+			// rather than consuming the next command's reply.
+			if strings.HasPrefix(line, "RPRT") || readErr != nil {
+				break
+			}
+		}
+		responses = append(responses, lines)
 	}
 	return responses, nil
 }
@@ -325,41 +338,58 @@ func (c *HamlibClient) isSatMode() bool {
 	return active
 }
 
-// readSubVFOFreq returns the Sub-band (uplink/TX) frequency for IC-9700 SAT mode.
+// readSubVFO returns the Sub-band (uplink/TX) frequency and mode for IC-9700
+// SAT mode.
 //
 // hamlib's get_split_freq (`i`) returns 0 for IC-9700 in SAT mode, so the only
-// working method is a VFO swap: V Sub → f → V Main. This physically toggles the
-// displayed VFO on the radio, so we cache the result and only refresh every
+// working method is a VFO swap: V Sub → f → m → V Main. This physically toggles
+// the displayed VFO on the radio, so we cache the result and only refresh every
 // subFreqTTL (5 s) to limit display flicker to once per 5 seconds instead of
 // once per second.
-func (c *HamlibClient) readSubVFOFreq() (float64, error) {
+//
+// The mode is read inside the same swap because it is only reachable there, and
+// because both of its consumers need the uplink one specifically: power2mW
+// answers from per-band, per-mode tables, and wavelog logs the TX mode.
+func (c *HamlibClient) readSubVFO() (float64, string, error) {
 	if time.Since(c.subFreqAt) < c.subFreqTTL && c.subFreqAt != (time.Time{}) {
-		debug.Log("[hamlib] SAT sub-band freq (cached): %.0f Hz", c.subFreq)
-		return c.subFreq, nil
+		debug.Log("[hamlib] SAT sub-band (cached): %.0f Hz %s", c.subFreq, c.subMode)
+		return c.subFreq, c.subMode, nil
 	}
 
 	// V Sub  → RPRT 0
 	// f      → <frequency>
+	// m      → <mode> then <passband>
 	// V Main → RPRT 0
-	resps, err := c.sendCmds("V Sub\n", "f\n", "V Main\n")
+	resps, err := c.sendCmds(
+		rigCmd{"V Sub\n", 1},
+		rigCmd{"f\n", 1},
+		rigCmd{"m\n", 2},
+		rigCmd{"V Main\n", 1},
+	)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
-	if len(resps) < 2 {
-		return 0, fmt.Errorf("incomplete response from sub VFO read")
+	if len(resps) < 3 || len(resps[0]) == 0 || len(resps[1]) == 0 {
+		return 0, "", fmt.Errorf("incomplete response from sub VFO read")
 	}
-	if strings.HasPrefix(resps[0], "RPRT") && resps[0] != "RPRT 0" {
-		return 0, fmt.Errorf("VFO switch to Sub rejected: %s", resps[0])
+	if strings.HasPrefix(resps[0][0], "RPRT") && resps[0][0] != "RPRT 0" {
+		return 0, "", fmt.Errorf("VFO switch to Sub rejected: %s", resps[0][0])
 	}
-	freq, err := strconv.ParseFloat(resps[1], 64)
+	freq, err := strconv.ParseFloat(resps[1][0], 64)
 	if err != nil {
-		return 0, fmt.Errorf("bad frequency from sub VFO: %q", resps[1])
+		return 0, "", fmt.Errorf("bad frequency from sub VFO: %q", resps[1][0])
 	}
 
-	c.subFreq = freq
-	c.subFreqAt = time.Now()
-	debug.Log("[hamlib] SAT sub-band freq (fresh): %.0f Hz", freq)
-	return freq, nil
+	// The mode is a bonus, not a precondition: losing it costs the TX mode, not
+	// the frequency, so a rig that refuses `m` still reports a usable sub band.
+	mode := ""
+	if len(resps[2]) > 0 && !strings.HasPrefix(resps[2][0], "RPRT") {
+		mode = resps[2][0]
+	}
+
+	c.subFreq, c.subMode, c.subFreqAt = freq, mode, time.Now()
+	debug.Log("[hamlib] SAT sub-band (fresh): %.0f Hz %s", freq, mode)
+	return freq, mode, nil
 }
 
 // setSubVFOFreq sets the Sub-band frequency by temporarily switching the
@@ -369,13 +399,17 @@ func (c *HamlibClient) setSubVFOFreq(hz int64) error {
 	// V Sub       → RPRT 0
 	// F <hz>      → RPRT 0
 	// V Main      → RPRT 0
-	resps, err := c.sendCmds("V Sub\n", fmt.Sprintf("F %d\n", hz), "V Main\n")
+	resps, err := c.sendCmds(
+		rigCmd{"V Sub\n", 1},
+		rigCmd{fmt.Sprintf("F %d\n", hz), 1},
+		rigCmd{"V Main\n", 1},
+	)
 	if err != nil {
 		return err
 	}
 	for _, r := range resps {
-		if strings.HasPrefix(r, "RPRT") && r != "RPRT 0" {
-			return fmt.Errorf("hamlib error setting sub VFO freq: %s", r)
+		if len(r) > 0 && strings.HasPrefix(r[0], "RPRT") && r[0] != "RPRT 0" {
+			return fmt.Errorf("hamlib error setting sub VFO freq: %s", r[0])
 		}
 	}
 	return nil
@@ -392,19 +426,20 @@ func (c *HamlibClient) setSubVFOFreq(hz int64) error {
 // 100 W / 75 W / 10 W).
 //
 // freqHz and mode should describe the TX VFO, since power2mW is band-dependent.
+//
+// A failure is never remembered. A rig that cannot answer is simply asked again
+// next poll, exactly as the SAT mode probe is on every rig that lacks SAT mode:
+// one command a second is the same price the poller already pays there, and it
+// is the wrong trade for a state flag that would make a momentary RPRT — a
+// timeout on a CI-V bus shared with WSJT-X, say — silence power for good.
 func (c *HamlibClient) readPowerWatts(freqHz float64, mode string) float64 {
-	if !c.readPower || c.rfPowerFails {
+	if !c.readPower {
 		return 0
 	}
 
 	resp, err := c.sendCmd("l RFPOWER\n")
 	if err != nil {
-		if isRigError(err) {
-			c.rfPowerFails = true
-			debug.Log("[hamlib] rig does not support RFPOWER, power reporting disabled: %v", err)
-		} else {
-			debug.Log("[hamlib] RFPOWER read failed: %v", err)
-		}
+		debug.Log("[hamlib] RFPOWER read failed: %v", err)
 		return 0
 	}
 	level, err := strconv.ParseFloat(strings.TrimSpace(resp), 64)
@@ -412,6 +447,7 @@ func (c *HamlibClient) readPowerWatts(freqHz float64, mode string) float64 {
 		debug.Log("[hamlib] RFPOWER unparseable: %q", resp)
 		return 0
 	}
+
 	level = math.Max(0, math.Min(1, level))
 	if level == 0 {
 		return 0
@@ -423,33 +459,20 @@ func (c *HamlibClient) readPowerWatts(freqHz float64, mode string) float64 {
 		return watts
 	}
 
-	// Rejections are latched against the frequency they happened at, not
-	// globally: a backend with no power tables rejects every call, but so does a
-	// perfectly good backend asked about a receive-only frequency (an IC-7300
-	// hears 0.03–74 MHz and transmits on the ham bands only). Keying the latch to
-	// the frequency stops the per-second retries in both cases, and re-arms as
-	// soon as the operator tunes somewhere else.
-	if c.power2mWFailAt == freqHz {
-		return 0
-	}
-
 	// power2mW is a long-form rigctl command: \power2mW <level> <freq> <mode>
+	//
+	// It is refused by a backend with no power tables, and equally by a good
+	// backend asked about a receive-only frequency (an IC-7300 hears
+	// 0.03–74 MHz but transmits on the ham bands only). Both are answered by
+	// setting Max Power, which skips this call entirely.
 	mwResp, err := c.sendCmd(fmt.Sprintf("\\power2mW %.6f %.0f %s\n", level, freqHz, mode))
 	if err != nil {
-		// Latch a rig rejection, but let a transient connection error retry on
-		// the next poll.
-		if isRigError(err) {
-			c.power2mWFailAt = freqHz
-			debug.Log("[hamlib] power2mW rejected at %.0f Hz, auto power off here (set Max Power to report it): %v", freqHz, err)
-		} else {
-			debug.Log("[hamlib] power2mW read failed: %v", err)
-		}
+		debug.Log("[hamlib] power2mW failed at %.0f Hz; set Max Power to report power here: %v", freqHz, err)
 		return 0
 	}
 	mw, err := strconv.ParseFloat(strings.TrimSpace(mwResp), 64)
 	if err != nil || mw <= 0 {
-		c.power2mWFailAt = freqHz
-		debug.Log("[hamlib] power2mW returned %q at %.0f Hz, auto power off here (set Max Power to report it)", mwResp, freqHz)
+		debug.Log("[hamlib] power2mW returned %q at %.0f Hz; set Max Power to report power here", mwResp, freqHz)
 		return 0
 	}
 
@@ -496,14 +519,13 @@ func (c *HamlibClient) GetStatus() (RigStatus, error) {
 	// Probe for SAT mode first; fall back to normal split detection otherwise.
 	if c.isSatMode() {
 		s.Split = true
-		subFreq, err := c.readSubVFOFreq()
+		subFreq, subMode, err := c.readSubVFO()
 		if err == nil {
 			s.FreqB = subFreq
+			s.ModeB = subMode
 		} else {
 			debug.Log("[hamlib] SAT sub-band read failed: %v", err)
 		}
-		// ModeB: reading Sub mode requires another VFO swap + two-line response
-		// parsing; skip for now — wavelog handles empty ModeB gracefully.
 	} else {
 		// Normal hamlib split (IC-7300 style VFO-A/B or IC-9700 simplex/split).
 		splitStr, _ := c.sendCmd("s\n")
@@ -516,17 +538,35 @@ func (c *HamlibClient) GetStatus() (RigStatus, error) {
 		}
 	}
 
-	// power2mW is band-dependent, so describe the TX VFO where we know it.
-	pwrFreq, pwrMode := s.FreqA, s.Mode
-	if s.Split && s.FreqB > 0 {
-		pwrFreq = s.FreqB
-		if s.ModeB != "" {
-			pwrMode = s.ModeB
-		}
+	if freq, mode, ok := txForPower(s); ok {
+		s.Power = c.readPowerWatts(freq, mode)
 	}
-	s.Power = c.readPowerWatts(pwrFreq, pwrMode)
 
 	return s, nil
+}
+
+// txForPower returns the frequency and mode to ask power2mW about — always the
+// TX VFO, because power tables are per band and per mode.
+//
+// When split is on but VFO B is unknown there is no answer worth giving. On the
+// rigs split matters for, the RX VFO is a different band entirely — an IC-9700
+// in SAT mode listens on 70 cm while transmitting on 2 m — so falling back to it
+// would report another band's power (75 W tables for a 100 W band) and would
+// count failures against a frequency we are not transmitting on.
+func txForPower(s RigStatus) (freq float64, mode string, ok bool) {
+	if !s.Split {
+		return s.FreqA, s.Mode, s.FreqA > 0
+	}
+	if s.FreqB <= 0 {
+		return 0, "", false
+	}
+	// ModeB is empty only if the rig refused the mode read; the RX mode is then
+	// the better guess, since uplink and downlink modes match in practice.
+	mode = s.ModeB
+	if mode == "" {
+		mode = s.Mode
+	}
+	return s.FreqB, mode, true
 }
 
 func (c *HamlibClient) SetFreqMode(hz int64, mode string) error {
