@@ -107,6 +107,13 @@ Enter the **Host** and **Port** for the chosen backend. Defaults are `127.0.0.1:
 
 **Ignore Power** (Hamlib only) — skip reading TX power, useful for rigs where Hamlib reports power unreliably.
 
+**Max Power** (Hamlib only) — Hamlib reports TX power as a level from 0.0 to 1.0 rather than
+in watts, so it has to be scaled. Leave this blank and WavelogGate asks Hamlib to do the
+conversion itself (`power2mW`), which stays correct on radios whose maximum output differs per
+band. Set a value in watts to override that — needed when you run an amplifier or transverter,
+or when Hamlib's figure for your radio is wrong. If your radio's backend cannot do the
+conversion and no value is set, power is simply not reported.
+
 #### Buttons
 
 | Button | Action |

@@ -14,6 +14,9 @@
 
   export let profile;
   export let radioType = "none";
+  // Passed in rather than read off `profile` so the Max Power field reacts
+  // immediately when the Ignore Power checkbox is toggled.
+  export let ignorePwr = false;
 
   // Track last active type so re-enabling restores the previous selection.
   let lastType = radioType !== "none" ? radioType : "flrig";
@@ -247,6 +250,29 @@
           </label>
         {/if}
       </div>
+
+      <!-- Max Power — hamlib reports RFPOWER as 0.0–1.0, so it needs scaling to watts.
+           Blank asks the rig (power2mW); set it for an amp/transverter or a rig hamlib
+           reports wrongly. -->
+      {#if (radioType === "hamlib" || radioType === "internal") && !ignorePwr}
+        <div class="flex items-center gap-2">
+          <label class="w-field-xs flex-shrink-0 text-fg-label text-2xs" for="radio-maxpower">Max Power</label>
+          <input
+            id="radio-maxpower"
+            type="number"
+            min="0"
+            step="1"
+            class="flex-none w-field-xs"
+            placeholder="auto"
+            value={profile.hamlib_max_power || ""}
+            on:change={(e) => dispatch("fieldchange", {
+              key: "hamlib_max_power",
+              value: Math.max(0, parseFloat(e.currentTarget.value) || 0),
+            })}
+          />
+          <span class="text-fg-muted text-2xs">W — blank asks the rig</span>
+        </div>
+      {/if}
 
       <!-- ── Internal (managed rigctld) section ────────────────────────────── -->
       {#if hamlibManaged}

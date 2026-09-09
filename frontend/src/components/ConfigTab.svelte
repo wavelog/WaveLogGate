@@ -80,6 +80,7 @@
         : "none"
     : "none";
 
+  $: ignorePwr = cfg?.profiles?.[cfg.profile]?.ignore_pwr ?? false;
   $: rotatorEnabled = cfg?.profiles?.[cfg.profile]?.rotator_enabled ?? false;
   $: satEnabled = cfg?.profiles?.[cfg.profile]?.sat_enabled ?? false;
 
@@ -120,6 +121,7 @@
       <RadioSection
         profile={activeProfile()}
         {radioType}
+        {ignorePwr}
         on:fieldchange={(e) => setProfileField(e.detail.key, e.detail.value)}
         on:typechange={(e) => setRadioType(e.detail)}
       />

@@ -24,6 +24,7 @@ type Profile struct {
 	HamlibPort         string  `json:"hamlib_port"`
 	HamlibEna          bool    `json:"hamlib_ena"`
 	IgnorePwr          bool    `json:"ignore_pwr"`
+	HamlibMaxPower     float64 `json:"hamlib_max_power"` // watts at RFPOWER 1.0; 0 = auto (hamlib power2mW)
 	RotatorEnabled     bool    `json:"rotator_enabled"`
 	RotatorHost        string  `json:"rotator_host"`
 	RotatorPort        string  `json:"rotator_port"`
@@ -36,8 +37,8 @@ type Profile struct {
 	SatEnabled     bool    `json:"sat_enabled"`
 	SatTxOffsetMHz float64 `json:"sat_tx_offset_mhz"` // MHz added to TX frequency
 	SatRxOffsetMHz float64 `json:"sat_rx_offset_mhz"` // MHz added to RX frequency
-	SatName        string  `json:"sat_name"`           // ADIF SAT_NAME (e.g., "QO-100")
-	SatMode        string  `json:"sat_mode"`            // ADIF SAT_MODE (e.g., "S/X")
+	SatName        string  `json:"sat_name"`          // ADIF SAT_NAME (e.g., "QO-100")
+	SatMode        string  `json:"sat_mode"`          // ADIF SAT_MODE (e.g., "S/X")
 
 	// Managed rigctld settings (WaveLogGate launches/manages rigctld).
 	HamlibManaged   bool   `json:"hamlib_managed"`
@@ -89,7 +90,7 @@ func defaultProfile() Profile {
 
 func Default() Config {
 	return Config{
-		Version:        8,
+		Version:        9,
 		Profile:        0,
 		ProfileNames:   []string{"Profile 1", "Profile 2"},
 		UDPEnabled:     true,
@@ -151,7 +152,7 @@ func Save(cfg Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// migrate ensures the config matches version 8 schema.
+// migrate ensures the config matches version 9 schema.
 func migrate(cfg Config) Config {
 	// Ensure at least 2 profiles exist.
 	for len(cfg.Profiles) < 2 {
@@ -193,6 +194,10 @@ func migrate(cfg Config) Config {
 	if cfg.Version < 8 {
 		cfg.Version = 8
 		// NotifyEnabled defaults to false — already zero value.
+	}
+	if cfg.Version < 9 {
+		cfg.Version = 9
+		// HamlibMaxPower defaults to 0 = auto (ask the rig via power2mW).
 	}
 	return cfg
 }
