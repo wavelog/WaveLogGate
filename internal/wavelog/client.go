@@ -2,7 +2,10 @@ package wavelog
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -59,9 +62,42 @@ var RequiredScopes = []string{"station:read", "qso:write", "radio:write"}
 
 // TokenInfo is the metadata returned by GET /api/v2/token ("whoami").
 type TokenInfo struct {
-	Name   string   `json:"name"`
-	Owner  string   `json:"owner"`
-	Scopes []string `json:"scopes"`
+	Name       string                           `json:"name"`
+	Owner      string                           `json:"owner"`
+	Scopes     []string                         `json:"scopes"`
+	Extensions map[string]RadioObservationOffer `json:"extensions,omitempty"`
+}
+
+const RadioObservationProtocol = "shackcq.radio-observation.v1"
+
+// RadioObservationOffer is explicit server opt-in for correlated successful
+// poll reports. A v2 token by itself never enables this extension.
+type RadioObservationOffer struct {
+	Version          int    `json:"version"`
+	ReportIntervalMS int    `json:"report_interval_ms"`
+	Acknowledgement  string `json:"acknowledgement"`
+	MaxClockSkewMS   int    `json:"max_clock_skew_ms"`
+}
+
+// RadioObservationCapability returns the negotiated extension only when the
+// server advertised the exact protocol and bounded parameters.
+func (c *Client) RadioObservationCapability() (*RadioObservationOffer, error) {
+	cfg := c.cfg.Load()
+	if cfg == nil || !IsV2Key(cfg.WavelogKey) {
+		return nil, nil
+	}
+	info, err := c.GetTokenInfo()
+	if err != nil {
+		return nil, err
+	}
+	offer, ok := info.Extensions[RadioObservationProtocol]
+	if !ok {
+		return nil, nil
+	}
+	if offer.Version != 1 || offer.Acknowledgement != "echo" || offer.ReportIntervalMS < 1000 || offer.ReportIntervalMS > 30000 || offer.MaxClockSkewMS < 1000 || offer.MaxClockSkewMS > 600000 {
+		return nil, fmt.Errorf("unsupported radio observation capability")
+	}
+	return &offer, nil
 }
 
 // MissingScopes returns the RequiredScopes the token does not carry.
@@ -124,15 +160,20 @@ func (c *Client) GetTokenInfo() (*TokenInfo, error) {
 
 // RadioData holds the data sent to Wavelog's /api/radio endpoint.
 type RadioData struct {
-	Frequency   int64
-	Mode        string
-	Power       float64
-	FrequencyRx int64
-	ModeRx      string
-	Split       bool
-	PropMode    string
-	SatName     string
-	SatMode     string
+	Frequency              int64
+	Mode                   string
+	Power                  float64
+	FrequencyRx            int64
+	ModeRx                 string
+	Split                  bool
+	PropMode               string
+	SatName                string
+	SatMode                string
+	SourceSessionID        string
+	SourceSessionStartedAt time.Time
+	SourceSequence         uint64
+	SourceObservedAt       time.Time
+	SourceProtocol         string
 }
 
 // Station represents a Wavelog station profile.
@@ -381,22 +422,52 @@ func (c *Client) SendQSO(adifStr string, dryRun bool) (*QSOResult, error) {
 }
 
 type radioPayload struct {
-	Radio       string  `json:"radio"`
-	Key         string  `json:"key,omitempty"`
-	Frequency   int64   `json:"frequency"`
-	Mode        string  `json:"mode"`
-	Power       float64 `json:"power,omitempty"`
-	FrequencyRx int64   `json:"frequency_rx,omitempty"`
-	ModeRx      string  `json:"mode_rx,omitempty"`
-	PropMode    string  `json:"prop_mode,omitempty"`
-	SatName     string  `json:"sat_name,omitempty"`
-	SatMode     string  `json:"sat_mode,omitempty"`
+	Radio                  string  `json:"radio"`
+	Key                    string  `json:"key,omitempty"`
+	Frequency              int64   `json:"frequency"`
+	Mode                   string  `json:"mode"`
+	Power                  float64 `json:"power,omitempty"`
+	FrequencyRx            int64   `json:"frequency_rx,omitempty"`
+	ModeRx                 string  `json:"mode_rx,omitempty"`
+	PropMode               string  `json:"prop_mode,omitempty"`
+	SatName                string  `json:"sat_name,omitempty"`
+	SatMode                string  `json:"sat_mode,omitempty"`
+	SourceSessionID        string  `json:"source_session_id,omitempty"`
+	SourceSessionStartedAt string  `json:"source_session_started_at,omitempty"`
+	SourceSequence         uint64  `json:"source_sequence,omitempty"`
+	SourceObservedAt       string  `json:"source_observed_at,omitempty"`
+	SourceProtocol         string  `json:"source_protocol,omitempty"`
 }
 
 // UpdateRadioStatus posts radio status to Wavelog's radio endpoint.
 // Frequencies are Hz in both API versions, so only path and auth differ.
 func (c *Client) UpdateRadioStatus(data RadioData) error {
-	cfg := c.cfg.Load()
+	_, err := c.updateRadioStatus(context.Background(), data, false, c.cfg.Load())
+	return err
+}
+
+// UpdateRadioStatusForProfile preserves the profile binding captured with a
+// poll even if the active UI profile changes before delivery completes.
+func (c *Client) UpdateRadioStatusForProfile(data RadioData, cfg *config.Profile) error {
+	_, err := c.updateRadioStatus(context.Background(), data, false, cfg)
+	return err
+}
+
+// UpdateRadioObservation sends one negotiated observation and requires the
+// credential-bound server to echo the exact identity and canonical payload hash.
+func (c *Client) UpdateRadioObservation(ctx context.Context, data RadioData) error {
+	_, err := c.updateRadioStatus(ctx, data, true, c.cfg.Load())
+	return err
+}
+
+// UpdateRadioObservationForProfile keeps the credential and station used for
+// a poll immutable while its asynchronous delivery is in flight.
+func (c *Client) UpdateRadioObservationForProfile(ctx context.Context, data RadioData, cfg *config.Profile) error {
+	_, err := c.updateRadioStatus(ctx, data, true, cfg)
+	return err
+}
+
+func (c *Client) updateRadioStatus(ctx context.Context, data RadioData, requireAck bool, cfg *config.Profile) (string, error) {
 	endpoint := baseURL(cfg) + "/api/radio"
 	if IsV2Key(cfg.WavelogKey) {
 		endpoint = baseURL(cfg) + "/api/v2/radio"
@@ -430,26 +501,102 @@ func (c *Client) UpdateRadioStatus(data RadioData) error {
 		SatName:     data.SatName,
 		SatMode:     data.SatMode,
 	}
+	// Correlation fields are emitted only after explicit capability negotiation.
+	if requireAck && data.SourceProtocol == RadioObservationProtocol && IsV2Key(cfg.WavelogKey) {
+		p.SourceProtocol = data.SourceProtocol
+		p.SourceSessionID = data.SourceSessionID
+		p.SourceSessionStartedAt = formatObservationTime(data.SourceSessionStartedAt)
+		p.SourceSequence = data.SourceSequence
+		if !data.SourceObservedAt.IsZero() {
+			p.SourceObservedAt = formatObservationTime(data.SourceObservedAt)
+		}
+	} else if requireAck {
+		return "", fmt.Errorf("radio observation capability not negotiated")
+	}
 	if data.Power > 0 {
 		p.Power = data.Power
 	}
 
 	body, err := json.Marshal(p)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	req, err := c.newRequest("POST", endpoint, body, cfg)
 	if err != nil {
-		return err
+		return "", err
 	}
+	req = req.WithContext(ctx)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
-	resp.Body.Close()
-	return nil
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("radio status HTTP %d", resp.StatusCode)
+	}
+	if !requireAck {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return "", nil
+	}
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return "", err
+	}
+	var envelope struct {
+		Data struct {
+			Observation struct {
+				Protocol         string `json:"protocol"`
+				SessionID        string `json:"session_id"`
+				SessionStartedAt string `json:"session_started_at"`
+				Sequence         uint64 `json:"sequence"`
+				ObservedAt       string `json:"observed_at"`
+				PayloadHash      string `json:"payload_hash"`
+			} `json:"observation"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(responseBody, &envelope); err != nil {
+		return "", fmt.Errorf("invalid radio observation acknowledgement")
+	}
+	ack := envelope.Data.Observation
+	expectedHash := radioObservationPayloadHash(p)
+	if ack.Protocol != p.SourceProtocol || ack.SessionID != p.SourceSessionID || ack.SessionStartedAt != p.SourceSessionStartedAt ||
+		ack.Sequence != p.SourceSequence || ack.ObservedAt != p.SourceObservedAt || ack.PayloadHash != expectedHash {
+		return "", fmt.Errorf("radio observation acknowledgement mismatch")
+	}
+	return expectedHash, nil
+}
+
+func formatObservationTime(value time.Time) string {
+	return value.UTC().Truncate(time.Millisecond).Format("2006-01-02T15:04:05.000Z")
+}
+
+func radioObservationPayloadHash(p radioPayload) string {
+	canonical := struct {
+		Frequency        int64   `json:"frequency"`
+		Mode             string  `json:"mode"`
+		FrequencyRx      *int64  `json:"frequency_rx"`
+		ModeRx           *string `json:"mode_rx"`
+		Radio            string  `json:"radio"`
+		SessionID        string  `json:"session_id"`
+		SessionStartedAt string  `json:"session_started_at"`
+		Sequence         uint64  `json:"sequence"`
+		ObservedAt       string  `json:"observed_at"`
+	}{
+		Frequency: p.Frequency, Mode: p.Mode, Radio: p.Radio, SessionID: p.SourceSessionID,
+		SessionStartedAt: p.SourceSessionStartedAt, Sequence: p.SourceSequence, ObservedAt: p.SourceObservedAt,
+	}
+	if p.FrequencyRx != 0 {
+		canonical.FrequencyRx = &p.FrequencyRx
+	}
+	if p.ModeRx != "" {
+		canonical.ModeRx = &p.ModeRx
+	}
+	body, _ := json.Marshal(canonical)
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
 }
 
 // stationV2 is the v2 shape of a station profile. It is mapped onto Station so the
