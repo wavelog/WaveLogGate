@@ -322,11 +322,15 @@ Any client can connect to `ws://localhost:54322` to receive live radio status:
   "mode": "USB",
   "power": 100,
   "radio": "WLGate",
-  "timestamp": 1700000000000
+  "timestamp": 1700000000000,
+  "observation_protocol": "shackcq.radio-observation.v1",
+  "session_id": "4c7701b6b7994e388c34d1c0bff455a9",
+  "session_started_at": 1699999900000,
+  "sequence": 42
 }
 ```
 
-A `{"type":"welcome","message":"..."}` message is sent on connect, followed immediately by the last known radio status.
+By default, radio status keeps the existing change-or-30-minute cadence. A server can explicitly negotiate `shackcq.radio-observation.v1` through v2 token information; only then does the client send successful unchanged observations at the server-advertised bounded cadence, with protocol, session-start, session, sequence and source-time metadata. A `{"type":"welcome","message":"..."}` message is sent on connect, followed by the last known extended status with `"cached":true`; that replay preserves its original identity and timestamp. Transient `radio_poll_status` and `radio_delivery_status` messages report poll and credential-bound delivery outcomes, but do not represent a successful radio observation.
 
 ---
 
