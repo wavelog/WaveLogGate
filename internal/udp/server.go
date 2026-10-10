@@ -107,7 +107,20 @@ func (s *Server) handleDatagram(data string) {
 	var fields map[string]string
 	var err error
 
-	if strings.Contains(data, "xml") {
+	fields, binaryPacket, err := parseFreeDVQSO([]byte(data))
+	if binaryPacket {
+		if err != nil {
+			debug.Log("[UDP] FreeDV parse failed: %v", err)
+			if s.onStatus != nil {
+				s.onStatus("Received broken FreeDV QSO: " + err.Error())
+			}
+			return
+		}
+		if fields == nil {
+			return
+		}
+		debug.Log("[UDP] detected format: binary FreeDV QSO")
+	} else if strings.Contains(data, "xml") {
 		debug.Log("[UDP] detected format: XML (FLDigi/N1MM)")
 		fields, err = adif.ParseXML(data)
 		if err != nil {

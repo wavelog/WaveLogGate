@@ -147,7 +147,7 @@ Unsaved field changes are lost when switching profiles — save first if needed.
 
 ---
 
-### UDP Logger Setup (WSJT-X / FLDigi)
+### UDP Logger Setup (WSJT-X / FreeDV / FLDigi)
 
 #### WSJT-X
 
@@ -156,7 +156,16 @@ Unsaved field changes are lost when switching profiles — save first if needed.
 3. Set **Server name**: `localhost` (or the WavelogGate machine IP)
 4. Set **Server port**: `2333`
 
-> Use **Secondary UDP Server** only — the primary server sends binary protocol packets that WavelogGate does not handle.
+> Use **Secondary UDP Server** for WSJT-X / JTDX. Binary QSO Logged messages are handled only for FreeDV; other clients should continue using ADIF output.
+
+#### FreeDV
+
+1. Open FreeDV's reporting options and enable **QSO Logging**.
+2. Set the logging hostname to `127.0.0.1` (or the WavelogGate machine IP).
+3. Set the logging port to `2333` (or your configured WavelogGate UDP port).
+4. Use **Log QSO** and confirm the contact in FreeDV.
+
+FreeDV's WSJT-X QSO Logged message (schema 2 or 3, UTC timestamps) is converted to ADIF with `MODE=DIGITALVOICE` and `SUBMODE=FREEDV`. The separate **UDP Broadcast** option sends reception data, not QSO log entries, and is not needed.
 
 #### FLDigi
 
