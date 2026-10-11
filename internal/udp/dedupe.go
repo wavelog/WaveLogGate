@@ -9,45 +9,63 @@ const dedupeWindow = 10 * time.Second
 
 type dedupe struct {
 	mu   sync.Mutex
-	seen map[string][]time.Time
+	seen map[string][]dedupeEntry
+}
+
+type dedupeEntry struct {
+	qsoTime    time.Time
+	receivedAt time.Time
 }
 
 func (d *dedupe) Seen(key string, t time.Time) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.seen == nil {
-		d.seen = make(map[string][]time.Time)
+		d.seen = make(map[string][]dedupeEntry)
 	}
-	times := d.seen[key]
-	duplicate := false
-	kept := times[:0]
-	for _, prev := range times {
-		diff := t.Sub(prev)
-		if diff <= dedupeWindow && diff >= -dedupeWindow {
-			duplicate = true
-			kept = append(kept, prev)
-		} else if prev.After(t) {
-			kept = append(kept, prev)
+	now := time.Now()
+	expiresBefore := now.Add(-dedupeWindow)
+	for existingKey, entries := range d.seen {
+		kept := entries[:0]
+		for _, entry := range entries {
+			if !entry.receivedAt.Before(expiresBefore) {
+				kept = append(kept, entry)
+			}
+		}
+		if len(kept) == 0 {
+			delete(d.seen, existingKey)
+		} else {
+			d.seen[existingKey] = kept
 		}
 	}
-	d.seen[key] = kept
-	if !duplicate {
-		d.seen[key] = append(d.seen[key], t)
+	entries := d.seen[key]
+	for i, entry := range entries {
+		diff := t.Sub(entry.qsoTime)
+		if diff <= dedupeWindow && diff >= -dedupeWindow {
+			entries[i].receivedAt = now
+			d.seen[key] = entries
+			return true
+		}
 	}
-	return duplicate
+	d.seen[key] = append(entries, dedupeEntry{qsoTime: t, receivedAt: now})
+	return false
 }
 
 func (d *dedupe) Forget(key string, t time.Time) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	times := d.seen[key]
-	kept := times[:0]
-	for _, prev := range times {
-		if prev != t {
-			kept = append(kept, prev)
+	entries := d.seen[key]
+	kept := entries[:0]
+	for _, entry := range entries {
+		if entry.qsoTime != t {
+			kept = append(kept, entry)
 		}
 	}
-	d.seen[key] = kept
+	if len(kept) == 0 {
+		delete(d.seen, key)
+	} else {
+		d.seen[key] = kept
+	}
 }
 
 func qsoTime(fields map[string]string) time.Time {
