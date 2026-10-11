@@ -16,14 +16,32 @@ var upgrader = websocket.Upgrader{
 
 // RadioStatusMsg is the message broadcast to WebSocket clients.
 type RadioStatusMsg struct {
-	Type        string  `json:"type"`
-	Frequency   int64   `json:"frequency"`
-	Mode        string  `json:"mode"`
-	Power       float64 `json:"power,omitempty"`
-	Radio       string  `json:"radio"`
-	Timestamp   int64   `json:"timestamp"`
-	FrequencyRx int64   `json:"frequency_rx,omitempty"`
-	ModeRx      string  `json:"mode_rx,omitempty"`
+	Type             string  `json:"type"`
+	Frequency        int64   `json:"frequency"`
+	Mode             string  `json:"mode"`
+	Power            float64 `json:"power,omitempty"`
+	Radio            string  `json:"radio"`
+	Timestamp        int64   `json:"timestamp"`
+	FrequencyRx      int64   `json:"frequency_rx,omitempty"`
+	ModeRx           string  `json:"mode_rx,omitempty"`
+	SessionID        string  `json:"session_id,omitempty"`
+	Sequence         uint64  `json:"sequence,omitempty"`
+	Cached           bool    `json:"cached,omitempty"`
+	Protocol         string  `json:"observation_protocol,omitempty"`
+	SessionStartedAt int64   `json:"session_started_at,omitempty"`
+}
+
+// RadioEvidenceMsg reports poll and credential-bound server-delivery state.
+// It never represents a successful radio observation by itself.
+type RadioEvidenceMsg struct {
+	Type             string `json:"type"`
+	State            string `json:"state"`
+	SessionID        string `json:"session_id"`
+	SessionStartedAt int64  `json:"session_started_at,omitempty"`
+	Sequence         uint64 `json:"sequence"`
+	Timestamp        int64  `json:"timestamp"`
+	ObservedAt       int64  `json:"observed_at,omitempty"`
+	FailureCode      string `json:"failure_code,omitempty"`
 }
 
 type client struct {
@@ -44,7 +62,7 @@ func (c *client) close() {
 type Hub struct {
 	mu        sync.RWMutex
 	clients   map[*client]struct{}
-	current   []byte // last status for welcome messages
+	current   *RadioStatusMsg // last successful observation for replay
 	OnMessage func(data []byte)
 
 	srvMu   sync.Mutex
@@ -60,7 +78,6 @@ func NewHub() *Hub {
 
 func (h *Hub) broadcast(msg []byte) {
 	h.mu.Lock()
-	h.current = msg
 	for c := range h.clients {
 		select {
 		case c.send <- msg:
@@ -74,7 +91,24 @@ func (h *Hub) broadcast(msg []byte) {
 
 // BroadcastStatus serializes and broadcasts a RadioStatusMsg.
 func (h *Hub) BroadcastStatus(msg RadioStatusMsg) {
-	msg.Timestamp = time.Now().UnixMilli()
+	if msg.Timestamp == 0 {
+		msg.Timestamp = time.Now().UnixMilli()
+	}
+	msg.Cached = false
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	h.mu.Lock()
+	current := msg
+	h.current = &current
+	h.mu.Unlock()
+	h.broadcast(data)
+}
+
+// BroadcastEvidence sends transient poll or delivery evidence. It is not
+// retained, because replaying it must not change observation freshness.
+func (h *Hub) BroadcastEvidence(msg RadioEvidenceMsg) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return
@@ -85,7 +119,11 @@ func (h *Hub) BroadcastStatus(msg RadioStatusMsg) {
 func (h *Hub) add(c *client) {
 	h.mu.Lock()
 	h.clients[c] = struct{}{}
-	current := h.current
+	var current *RadioStatusMsg
+	if h.current != nil {
+		copy := *h.current
+		current = &copy
+	}
 	h.mu.Unlock()
 
 	// Send welcome.
@@ -97,7 +135,12 @@ func (h *Hub) add(c *client) {
 
 	// Send current status if available.
 	if current != nil {
-		c.send <- current
+		if current.Protocol != "" {
+			current.Cached = true
+		}
+		if data, err := json.Marshal(current); err == nil {
+			c.send <- data
+		}
 	}
 }
 

@@ -207,7 +207,28 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	// Radio poller.
-	a.poller = radio.NewPoller(&profile, a.wlClient, func(status radio.RigStatus) {
+	a.poller = radio.NewPoller(&profile, a.wlClient, func(event radio.PollEvent) {
+		if event.State != radio.PollObserved {
+			if !event.Correlated {
+				return
+			}
+			eventType := "radio_poll_status"
+			if event.State == radio.ServerDelivered || event.State == radio.ServerDeliveryFailed {
+				eventType = "radio_delivery_status"
+			}
+			a.wsHub.BroadcastEvidence(ws.RadioEvidenceMsg{
+				Type:             eventType,
+				State:            string(event.State),
+				SessionID:        event.SessionID,
+				SessionStartedAt: unixMilliOrZero(event.SessionStartedAt),
+				Sequence:         event.Sequence,
+				Timestamp:        event.EventAt.UnixMilli(),
+				ObservedAt:       unixMilliOrZero(event.ObservedAt),
+				FailureCode:      event.FailureCode,
+			})
+			return
+		}
+		status := event.Status
 		// Emit to frontend.
 		wailsruntime.EventsEmit(a.ctx, "radio:status", map[string]interface{}{
 			"freqMHz":   status.FreqA / 1_000_000,
@@ -223,7 +244,14 @@ func (a *App) startup(ctx context.Context) {
 			Frequency: int64(math.Round(status.FreqA)),
 			Mode:      status.Mode,
 			Power:     status.Power,
-			Radio:     profile.WavelogRadioname,
+			Radio:     event.RadioName,
+			Timestamp: event.ObservedAt.UnixMilli(),
+		}
+		if event.Correlated {
+			msg.Protocol = wavelog.RadioObservationProtocol
+			msg.SessionID = event.SessionID
+			msg.SessionStartedAt = event.SessionStartedAt.UnixMilli()
+			msg.Sequence = event.Sequence
 		}
 		if status.Split {
 			msg.Frequency = int64(math.Round(status.FreqB)) // TX
@@ -233,6 +261,11 @@ func (a *App) startup(ctx context.Context) {
 		}
 		a.wsHub.BroadcastStatus(msg)
 	})
+	capability, capabilityErr := a.wlClient.RadioObservationCapability()
+	if capabilityErr != nil {
+		debug.Log("[WL] radio observation extension disabled: %v", capabilityErr)
+	}
+	a.poller.ConfigureObservationCapability(capability)
 	a.poller.Start(ctx)
 
 	// TLS certificate.
@@ -280,6 +313,13 @@ func (a *App) startup(ctx context.Context) {
 	}
 }
 
+func unixMilliOrZero(value time.Time) int64 {
+	if value.IsZero() {
+		return 0
+	}
+	return value.UnixMilli()
+}
+
 // shutdown is called by Wails when the application closes.
 func (a *App) shutdown(ctx context.Context) {
 	if a.wsHub != nil {
@@ -310,8 +350,12 @@ func (a *App) emitStatus(msg string) {
 
 // applyProfile pushes a new active profile to all subsystems that cache it.
 func (a *App) applyProfile(profile config.Profile) {
-	a.wlClient.UpdateProfile(&profile)
 	a.poller.UpdateConfig(&profile)
+	capability, err := a.wlClient.RadioObservationCapability()
+	if err != nil {
+		debug.Log("[WL] radio observation extension disabled after profile change: %v", err)
+	}
+	a.poller.ConfigureObservationCapability(capability)
 	a.rotator.UpdateProfile(profile)
 	a.startManagedHamlib(profile)
 	if a.udpSrv != nil {
