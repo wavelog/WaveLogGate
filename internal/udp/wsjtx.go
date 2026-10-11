@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"waveloggate/internal/adif"
@@ -29,16 +30,17 @@ func parseWSJTXQSO(data []byte) (map[string]string, bool, error) {
 	if schema != 2 && schema != 3 {
 		return nil, true, fmt.Errorf("unsupported WSJT-X schema %d", schema)
 	}
-	if _, err := readWSJTXString(reader); err != nil {
+	clientID, err := readWSJTXString(reader)
+	if err != nil {
 		return nil, true, err
 	}
 	if messageType == 12 {
-		return parseLoggedADIF(reader)
+		return parseLoggedADIF(reader, clientID)
 	}
-	return parseQSOLogged(reader)
+	return parseQSOLogged(reader, clientID)
 }
 
-func parseLoggedADIF(reader *bytes.Reader) (map[string]string, bool, error) {
+func parseLoggedADIF(reader *bytes.Reader, clientID string) (map[string]string, bool, error) {
 	payload, err := readWSJTXString(reader)
 	if err != nil {
 		return nil, true, err
@@ -46,14 +48,14 @@ func parseLoggedADIF(reader *bytes.Reader) (map[string]string, bool, error) {
 	fields := adif.Parse(adif.NormalizeKIndex(adif.NormalizeTXPwr(payload)))
 	delete(fields, "ADIF_VER")
 	delete(fields, "PROGRAMID")
-	ensureFreeDVSubmode(fields)
+	ensureFreeDVSubmode(fields, clientID)
 	if len(fields) == 0 {
 		return nil, true, fmt.Errorf("logged ADIF message carries no QSO fields")
 	}
 	return fields, true, nil
 }
 
-func parseQSOLogged(reader *bytes.Reader) (map[string]string, bool, error) {
+func parseQSOLogged(reader *bytes.Reader, clientID string) (map[string]string, bool, error) {
 	fields := make(map[string]string)
 	readDate := func(dateField, timeField string) error {
 		var julianDay int64
@@ -118,12 +120,12 @@ func parseQSOLogged(reader *bytes.Reader) (map[string]string, bool, error) {
 	if fields["CALL"] == "" || frequency == 0 || fields["MODE"] == "" {
 		return nil, true, fmt.Errorf("QSO logged message is missing callsign, frequency or mode")
 	}
-	ensureFreeDVSubmode(fields)
+	ensureFreeDVSubmode(fields, clientID)
 	return fields, true, nil
 }
 
-func ensureFreeDVSubmode(fields map[string]string) {
-	if fields["MODE"] == "DIGITALVOICE" && fields["SUBMODE"] == "" {
+func ensureFreeDVSubmode(fields map[string]string, clientID string) {
+	if strings.EqualFold(clientID, "FreeDV") && strings.EqualFold(fields["MODE"], "DIGITALVOICE") && fields["SUBMODE"] == "" {
 		fields["SUBMODE"] = "FREEDV"
 	}
 }

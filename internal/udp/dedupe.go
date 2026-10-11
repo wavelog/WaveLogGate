@@ -60,5 +60,5 @@ func qsoTime(fields map[string]string) time.Time {
 }
 
 func qsoKey(fields map[string]string) string {
-	return fields["CALL"] + "|" + fields["BAND"] + "|" + fields["MODE"] + "|" + fields["STATION_CALLSIGN"]
+	return fields["CALL"] + "|" + fields["BAND"] + "|" + fields["MODE"] + "|" + fields["SUBMODE"] + "|" + fields["STATION_CALLSIGN"]
 }
