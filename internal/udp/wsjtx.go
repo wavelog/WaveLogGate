@@ -7,9 +7,11 @@ import (
 	"io"
 	"strconv"
 	"time"
+
+	"waveloggate/internal/adif"
 )
 
-func parseFreeDVQSO(data []byte) (map[string]string, bool, error) {
+func parseWSJTXQSO(data []byte) (map[string]string, bool, error) {
 	if len(data) < 4 || binary.BigEndian.Uint32(data[:4]) != 0xadbccbda {
 		return nil, false, nil
 	}
@@ -21,22 +23,37 @@ func parseFreeDVQSO(data []byte) (map[string]string, bool, error) {
 	if err := binary.Read(reader, binary.BigEndian, &messageType); err != nil {
 		return nil, true, err
 	}
-	if messageType == 12 {
-		return nil, false, nil
-	}
-	if messageType != 5 {
+	if messageType != 5 && messageType != 12 {
 		return nil, true, nil
 	}
 	if schema != 2 && schema != 3 {
 		return nil, true, fmt.Errorf("unsupported WSJT-X schema %d", schema)
 	}
-	identifier, err := readWSJTXString(reader)
+	if _, err := readWSJTXString(reader); err != nil {
+		return nil, true, err
+	}
+	if messageType == 12 {
+		return parseLoggedADIF(reader)
+	}
+	return parseQSOLogged(reader)
+}
+
+func parseLoggedADIF(reader *bytes.Reader) (map[string]string, bool, error) {
+	payload, err := readWSJTXString(reader)
 	if err != nil {
 		return nil, true, err
 	}
-	if identifier != "FreeDV" {
-		return nil, true, nil
+	fields := adif.Parse(adif.NormalizeKIndex(adif.NormalizeTXPwr(payload)))
+	delete(fields, "ADIF_VER")
+	delete(fields, "PROGRAMID")
+	ensureFreeDVSubmode(fields)
+	if len(fields) == 0 {
+		return nil, true, fmt.Errorf("logged ADIF message carries no QSO fields")
 	}
+	return fields, true, nil
+}
+
+func parseQSOLogged(reader *bytes.Reader) (map[string]string, bool, error) {
 	fields := make(map[string]string)
 	readDate := func(dateField, timeField string) error {
 		var julianDay int64
@@ -87,13 +104,28 @@ func parseFreeDVQSO(data []byte) (map[string]string, bool, error) {
 	if err := readFields("OPERATOR", "STATION_CALLSIGN", "MY_GRIDSQUARE"); err != nil {
 		return nil, true, err
 	}
-	if fields["CALL"] == "" || frequency == 0 || fields["MODE"] == "" {
-		return nil, true, fmt.Errorf("FreeDV QSO is missing callsign, frequency or mode")
+	var optional []string
+	for reader.Len() > 0 {
+		value, err := readWSJTXString(reader)
+		if err != nil {
+			break
+		}
+		optional = append(optional, value)
 	}
-	if fields["MODE"] == "DIGITALVOICE" {
+	if len(optional) >= 3 && optional[2] != "" {
+		fields["PROP_MODE"] = optional[2]
+	}
+	if fields["CALL"] == "" || frequency == 0 || fields["MODE"] == "" {
+		return nil, true, fmt.Errorf("QSO logged message is missing callsign, frequency or mode")
+	}
+	ensureFreeDVSubmode(fields)
+	return fields, true, nil
+}
+
+func ensureFreeDVSubmode(fields map[string]string) {
+	if fields["MODE"] == "DIGITALVOICE" && fields["SUBMODE"] == "" {
 		fields["SUBMODE"] = "FREEDV"
 	}
-	return fields, true, nil
 }
 
 func readWSJTXString(reader *bytes.Reader) (string, error) {
