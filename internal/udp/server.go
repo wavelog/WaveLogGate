@@ -27,6 +27,7 @@ type Server struct {
 	sem      chan struct{}
 	cfgMu    sync.RWMutex
 	cfg      *config.Profile
+	dupe     dedupe
 }
 
 // New creates a new UDP server. queue may be nil to disable buffering.
@@ -107,7 +108,20 @@ func (s *Server) handleDatagram(data string) {
 	var fields map[string]string
 	var err error
 
-	if strings.Contains(data, "xml") {
+	fields, binaryPacket, err := parseWSJTXQSO([]byte(data))
+	if binaryPacket {
+		if err != nil {
+			debug.Log("[UDP] WSJT-X parse failed: %v", err)
+			if s.onStatus != nil {
+				s.onStatus("Received broken WSJT-X packet: " + err.Error())
+			}
+			return
+		}
+		if fields == nil {
+			return
+		}
+		debug.Log("[UDP] detected format: binary WSJT-X QSO")
+	} else if strings.Contains(data, "xml") {
 		debug.Log("[UDP] detected format: XML (FLDigi/N1MM)")
 		fields, err = adif.ParseXML(data)
 		if err != nil {
@@ -127,7 +141,7 @@ func (s *Server) handleDatagram(data string) {
 	if len(fields) == 0 {
 		debug.Log("[UDP] no ADIF fields parsed — dropping datagram")
 		if s.onStatus != nil {
-			s.onStatus("No ADIF detected. WSJT-X: Use ONLY Secondary UDP-Server")
+			s.onStatus("No ADIF detected in datagram")
 		}
 		return
 	}
@@ -156,6 +170,12 @@ func (s *Server) handleDatagram(data string) {
 		return
 	}
 
+	key, ts := qsoKey(fields), qsoTime(fields)
+	if s.dupe.Seen(key, ts) {
+		debug.Log("[UDP] duplicate QSO dropped: call=%s band=%s mode=%s", fields["CALL"], fields["BAND"], fields["MODE"])
+		return
+	}
+
 	result, err := s.wlClient.SendQSO(adifStr, false)
 	if err != nil {
 		// Hard client errors (marshal / request build, e.g. malformed URL) are
@@ -164,6 +184,10 @@ func (s *Server) handleDatagram(data string) {
 		// is only visible in the debug log.
 		debug.Log("[UDP] SendQSO error: %v", err)
 		result = &wavelog.QSOResult{Success: false, Reason: wavelog.ReasonInternet}
+	}
+
+	if !result.Success && !wavelog.IsTransient(result.Reason) {
+		s.dupe.Forget(key, ts)
 	}
 
 	debug.Log("[UDP] QSO result: success=%v call=%s band=%s mode=%s reason=%s",
