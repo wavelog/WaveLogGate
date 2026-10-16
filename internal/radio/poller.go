@@ -200,8 +200,7 @@ func statusEqual(a, b RigStatus) bool {
 		a.Mode == b.Mode &&
 		a.ModeB == b.ModeB &&
 		a.Power == b.Power &&
-		a.Split == b.Split &&
-		a.PTT == b.PTT
+		a.Split == b.Split
 }
 
 func buildClient(cfg *config.Profile) RadioClient {

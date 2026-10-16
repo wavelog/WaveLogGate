@@ -24,7 +24,6 @@ type RigStatus struct {
 	ModeB string
 	Power float64
 	Split bool
-	PTT   bool
 }
 
 // RadioClient is the interface for radio backends.
@@ -133,9 +132,6 @@ func (c *FLRigClient) GetStatus() (RigStatus, error) {
 	if err != nil {
 		return s, err
 	}
-
-	pttStr, _ := c.xmlrpcCall("rig.get_ptt")
-	s.PTT = pttStr == "1" || pttStr == "T" || strings.ToLower(pttStr) == "true"
 
 	pwrStr, _ := c.xmlrpcCall("rig.get_power")
 	s.Power, _ = strconv.ParseFloat(pwrStr, 64)
