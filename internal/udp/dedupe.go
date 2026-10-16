@@ -1,6 +1,7 @@
 package udp
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -82,5 +83,5 @@ func qsoKey(fields map[string]string) string {
 	if fields["SUBMODE"] != "" {
 		mode = fields["SUBMODE"]
 	}
-	return fields["CALL"] + "|" + fields["BAND"] + "|" + mode + "|" + fields["STATION_CALLSIGN"]
+	return strings.ToUpper(fields["CALL"] + "|" + fields["BAND"] + "|" + mode + "|" + fields["STATION_CALLSIGN"])
 }

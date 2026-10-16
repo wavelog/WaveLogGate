@@ -12,32 +12,40 @@ import (
 	"waveloggate/internal/adif"
 )
 
-func parseWSJTXQSO(data []byte) (map[string]string, bool, error) {
+const (
+	wsjtxMessageTypeQSOLogged  = 5
+	wsjtxMessageTypeLoggedADIF = 12
+	qsoLoggedADIFWait          = 100 * time.Millisecond
+)
+
+func parseWSJTXQSO(data []byte) (map[string]string, uint32, bool, error) {
 	if len(data) < 4 || binary.BigEndian.Uint32(data[:4]) != 0xadbccbda {
-		return nil, false, nil
+		return nil, 0, false, nil
 	}
 	reader := bytes.NewReader(data[4:])
 	var schema, messageType uint32
 	if err := binary.Read(reader, binary.BigEndian, &schema); err != nil {
-		return nil, true, err
+		return nil, 0, true, err
 	}
 	if err := binary.Read(reader, binary.BigEndian, &messageType); err != nil {
-		return nil, true, err
+		return nil, 0, true, err
 	}
-	if messageType != 5 && messageType != 12 {
-		return nil, true, nil
+	if messageType != wsjtxMessageTypeQSOLogged && messageType != wsjtxMessageTypeLoggedADIF {
+		return nil, messageType, true, nil
 	}
 	if schema != 2 && schema != 3 {
-		return nil, true, fmt.Errorf("unsupported WSJT-X schema %d", schema)
+		return nil, messageType, true, fmt.Errorf("unsupported WSJT-X schema %d", schema)
 	}
 	clientID, err := readWSJTXString(reader)
 	if err != nil {
-		return nil, true, err
+		return nil, messageType, true, err
 	}
-	if messageType == 12 {
-		return parseLoggedADIF(reader, clientID)
+	if messageType == wsjtxMessageTypeLoggedADIF {
+		fields, binaryPacket, err := parseLoggedADIF(reader, clientID)
+		return fields, messageType, binaryPacket, err
 	}
-	return parseQSOLogged(reader, clientID)
+	fields, binaryPacket, err := parseQSOLogged(reader, clientID)
+	return fields, messageType, binaryPacket, err
 }
 
 func parseLoggedADIF(reader *bytes.Reader, clientID string) (map[string]string, bool, error) {

@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"waveloggate/internal/adif"
 	"waveloggate/internal/config"
@@ -94,8 +95,8 @@ func (s *Server) readLoop() {
 			return
 		}
 		data := string(buf[:n])
-		s.sem <- struct{}{}
 		go func() {
+			s.sem <- struct{}{}
 			defer func() { <-s.sem }()
 			s.handleDatagram(data)
 		}()
@@ -108,7 +109,7 @@ func (s *Server) handleDatagram(data string) {
 	var fields map[string]string
 	var err error
 
-	fields, binaryPacket, err := parseWSJTXQSO([]byte(data))
+	fields, wsjtxMessageType, binaryPacket, err := parseWSJTXQSO([]byte(data))
 	if binaryPacket {
 		if err != nil {
 			debug.Log("[UDP] WSJT-X parse failed: %v", err)
@@ -119,6 +120,10 @@ func (s *Server) handleDatagram(data string) {
 		}
 		if fields == nil {
 			return
+		}
+		if wsjtxMessageType == wsjtxMessageTypeQSOLogged {
+			// Give the richer Logged ADIF packet time to win deduplication.
+			time.Sleep(qsoLoggedADIFWait)
 		}
 		debug.Log("[UDP] detected format: binary WSJT-X QSO")
 	} else if strings.Contains(data, "xml") {
