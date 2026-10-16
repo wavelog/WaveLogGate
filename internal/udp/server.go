@@ -95,8 +95,8 @@ func (s *Server) readLoop() {
 			return
 		}
 		data := string(buf[:n])
-		s.sem <- struct{}{}
 		go func() {
+			s.sem <- struct{}{}
 			defer func() { <-s.sem }()
 			s.handleDatagram(data)
 		}()
