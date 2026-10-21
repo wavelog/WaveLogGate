@@ -58,6 +58,8 @@ yay -S waveloggate-git
 
 Download the `.dmg` for your architecture (`arm64` for Apple Silicon, `amd64` for Intel) and drag the app to `/Applications`.
 
+Closing the window hides WavelogGate rather than quitting it, so it keeps listening for QSOs in the background. Click its Dock icon to bring the window back; use the **Quit** button (or Quit in the Dock menu) to exit.
+
 ### Windows
 
 Download the `.exe` for your architecture and run it directly — no installer required.
