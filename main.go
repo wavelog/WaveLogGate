@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -34,13 +35,17 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:            "WavelogGate2 by DJ7NT " + appVersion,
-		Width:            430,
-		Height:           620,
-		MinWidth:         430,
-		MinHeight:        130,
-		DisableResize:    false,
-		BackgroundColour: &options.RGBA{R: 48, G: 48, B: 48, A: 255},
+		Title:         "WavelogGate2 by DJ7NT " + appVersion,
+		Width:         430,
+		Height:        620,
+		MinWidth:      430,
+		MinHeight:     130,
+		DisableResize: false,
+		// macOS convention: closing the window hides the app instead of quitting,
+		// so the UDP listener keeps catching QSOs. Dock icon brings it back;
+		// Quit (button, Dock menu) still exits.
+		HideWindowOnClose: runtime.GOOS == "darwin",
+		BackgroundColour:  &options.RGBA{R: 48, G: 48, B: 48, A: 255},
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
