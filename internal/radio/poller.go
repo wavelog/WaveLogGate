@@ -13,7 +13,7 @@ import (
 )
 
 // StatusCallback is called whenever radio status changes or needs reporting.
-type StatusCallback func(status RigStatus)
+type StatusCallback func(status RigStatus, cfg *config.Profile)
 
 // Poller polls a RadioClient every second and reports changes.
 type Poller struct {
@@ -167,7 +167,7 @@ func (p *Poller) poll() {
 		p.mu.Unlock()
 
 		if p.onStatus != nil {
-			p.onStatus(status)
+			p.onStatus(status, cfg)
 		}
 
 		// Send to Wavelog.
