@@ -24,6 +24,9 @@ type RadioStatusMsg struct {
 	Timestamp   int64   `json:"timestamp"`
 	FrequencyRx int64   `json:"frequency_rx,omitempty"`
 	ModeRx      string  `json:"mode_rx,omitempty"`
+	PropMode string `json:"prop_mode,omitempty"`
+	SatName  string `json:"satname,omitempty"`
+	SatMode  string `json:"satmode,omitempty"`
 }
 
 type client struct {

@@ -207,7 +207,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	// Radio poller.
-	a.poller = radio.NewPoller(&profile, a.wlClient, func(status radio.RigStatus) {
+	a.poller = radio.NewPoller(&profile, a.wlClient, func(status radio.RigStatus, cfg *config.Profile) {
 		// Emit to frontend.
 		wailsruntime.EventsEmit(a.ctx, "radio:status", map[string]interface{}{
 			"freqMHz":   status.FreqA / 1_000_000,
@@ -217,19 +217,26 @@ func (a *App) startup(ctx context.Context) {
 			"modeTx":    status.ModeB,
 		})
 
-		// Broadcast to WebSocket clients.
+		// Broadcast to WebSocket clients. cfg is the poller's fresh profile —
+		// a profile switch (sat on/off, radioname) is reflected on the next
+		// broadcast without reading App.cfg from this goroutine.
 		msg := ws.RadioStatusMsg{
 			Type:      "radio_status",
 			Frequency: int64(math.Round(status.FreqA)),
 			Mode:      status.Mode,
 			Power:     status.Power,
-			Radio:     profile.WavelogRadioname,
+			Radio:     cfg.WavelogRadioname,
 		}
 		if status.Split {
 			msg.Frequency = int64(math.Round(status.FreqB)) // TX
 			msg.Mode = status.ModeB
 			msg.FrequencyRx = int64(math.Round(status.FreqA)) // RX
 			msg.ModeRx = status.Mode
+		}
+		if cfg.SatEnabled {
+			msg.PropMode = "SAT"
+			msg.SatName = cfg.SatName
+			msg.SatMode = cfg.SatMode
 		}
 		a.wsHub.BroadcastStatus(msg)
 	})
