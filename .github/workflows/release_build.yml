@@ -89,7 +89,7 @@ jobs:
           sudo gem install --no-document fpm
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
       - name: Build
         shell: bash
