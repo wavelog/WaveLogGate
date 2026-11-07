@@ -5,11 +5,10 @@ pkgrel=1
 arch=('x86_64')
 makedepends=(
     'git'
+    'go'
+    'bun'
 )
 depends=(
-    'go'
-    'wails'
-    'bun'
     'webkit2gtk-4.1'
     'hamlib'
 )
@@ -36,7 +35,20 @@ options=(!lto !debug)
 
 build () {
     cd WaveLogGate
-    wails build -clean -tags webkit2_41
+
+    local go_version
+    local wails_version
+    go_version="$(awk '$1 == "go" { print $2; exit }' go.mod)"
+    wails_version="$(awk '$1 == "github.com/wailsapp/wails/v2" { print $2; exit }' go.mod)"
+
+    if [[ -z "${go_version}" || -z "${wails_version}" ]]; then
+        error "Unable to determine the Go or Wails version from go.mod"
+        return 1
+    fi
+
+    GOTOOLCHAIN="go${go_version}" \
+        go run "github.com/wailsapp/wails/v2/cmd/wails@${wails_version}" \
+        build -clean -tags webkit2_41
 }
 
 package() {
