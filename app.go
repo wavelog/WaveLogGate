@@ -60,6 +60,9 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	restoreWindowPosition(ctx)
+	go trackWindowPosition(ctx)
+
 	go startmenu.EnsureShortcut("WaveLogGate") //nolint:errcheck
 
 	cfg, err := config.Load()
